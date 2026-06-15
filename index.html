@@ -1,0 +1,1380 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BrowserLab Research Plotter</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #18221f;
+      --muted: #697570;
+      --line: #dce3df;
+      --surface: #ffffff;
+      --canvas: #f3f6f4;
+      --green: #167d59;
+      --green-dark: #0d5d41;
+      --blue: #2d6cdf;
+      --orange: #e7842e;
+      --red: #b84646;
+      font-family: Inter, "Segoe UI", "Microsoft YaHei", sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-width: 1180px;
+      color: var(--ink);
+      background: var(--canvas);
+      -webkit-font-smoothing: antialiased;
+    }
+
+    button, input, select { font: inherit; }
+
+    .topbar {
+      height: 58px;
+      padding: 0 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      color: #fff;
+      background: #14241e;
+      border-bottom: 1px solid #263b33;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 750;
+      letter-spacing: 0;
+    }
+
+    .brand-mark {
+      width: 28px;
+      height: 28px;
+      display: grid;
+      place-items: center;
+      border-radius: 6px;
+      background: var(--green);
+      color: #f8fffb;
+      font-family: Georgia, serif;
+      font-size: 17px;
+    }
+
+    .runtime {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-width: 520px;
+      color: #c8d5d0;
+      font-size: 13px;
+    }
+
+    .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #efb03d;
+    }
+
+    .dot.ready {
+      background: #45d08f;
+      box-shadow: 0 0 0 4px rgba(69, 208, 143, .12);
+    }
+
+    .progress {
+      width: 180px;
+      height: 4px;
+      overflow: hidden;
+      border-radius: 2px;
+      background: #40524b;
+    }
+
+    .progress span {
+      display: block;
+      width: 0;
+      height: 100%;
+      background: #45d08f;
+      transition: width .35s ease;
+    }
+
+    .layout {
+      height: calc(100vh - 58px);
+      display: grid;
+      grid-template-columns: 286px minmax(620px, 1fr) 360px;
+      overflow: hidden;
+    }
+
+    .sidebar,
+    .inspector {
+      min-height: 0;
+      background: var(--surface);
+    }
+
+    .sidebar {
+      border-right: 1px solid var(--line);
+      display: grid;
+      grid-template-rows: auto auto minmax(0, 1fr);
+    }
+
+    .side-head {
+      padding: 22px 18px 12px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    h1, h2, h3, p { margin-top: 0; }
+
+    h1 {
+      margin-bottom: 6px;
+      font-size: 18px;
+      line-height: 1.25;
+    }
+
+    h2 {
+      margin: 0;
+      font-size: 15px;
+      line-height: 1.3;
+    }
+
+    h3 {
+      margin: 0 0 8px;
+      font-size: 13px;
+    }
+
+    .subtle {
+      margin-bottom: 0;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.55;
+    }
+
+    .side-tabs {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      padding: 10px;
+      gap: 8px;
+      border-bottom: 1px solid var(--line);
+      background: #fbfcfb;
+    }
+
+    .side-tab {
+      height: 34px;
+      border: 1px solid var(--line);
+      border-radius: 5px;
+      color: var(--muted);
+      background: #fff;
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    .side-tab.active {
+      color: #fff;
+      border-color: var(--green);
+      background: var(--green);
+    }
+
+    .side-body {
+      min-height: 0;
+    }
+
+    .side-pane {
+      min-height: 0;
+      height: 100%;
+      display: none;
+    }
+
+    .side-pane.active {
+      display: grid;
+    }
+
+    .side-data {
+      grid-template-rows: auto minmax(0, 1fr);
+    }
+
+    .side-settings {
+      overflow: auto;
+      background: #fbfcfb;
+    }
+
+    .side-context {
+      padding: 12px 18px;
+      border-bottom: 1px solid var(--line);
+      background: #fff;
+    }
+
+    .side-context span {
+      display: block;
+      margin-bottom: 5px;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+
+    .side-context strong {
+      display: block;
+      color: var(--ink);
+      font-size: 13px;
+      line-height: 1.4;
+    }
+
+    .dataset-list {
+      min-height: 0;
+      overflow: auto;
+      padding: 12px;
+    }
+
+    .dataset {
+      width: 100%;
+      min-height: 82px;
+      margin-bottom: 10px;
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      text-align: left;
+      color: var(--ink);
+      background: #fbfcfb;
+      cursor: pointer;
+    }
+
+    .dataset:hover {
+      border-color: #b9c9c1;
+      background: #f8fbf9;
+    }
+
+    .dataset.active {
+      border-color: rgba(22, 125, 89, .55);
+      background: #eaf6f0;
+      box-shadow: inset 3px 0 0 var(--green);
+    }
+
+    .dataset-title {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 7px;
+      font-size: 13px;
+      font-weight: 750;
+    }
+
+    .dataset-code {
+      color: var(--muted);
+      font-size: 11px;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .dataset-meta {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 6px;
+      color: var(--muted);
+      font-size: 11px;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .controls {
+      padding: 16px 18px 18px;
+      background: #fbfcfb;
+    }
+
+    .control { margin-bottom: 14px; }
+
+    label {
+      display: block;
+      margin-bottom: 7px;
+      color: #27342f;
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    select, input[type="number"] {
+      width: 100%;
+      height: 38px;
+      padding: 0 10px;
+      border: 1px solid #cbd5d0;
+      border-radius: 5px;
+      color: var(--ink);
+      background: #fff;
+    }
+
+    .range-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    input[type="range"] {
+      width: 100%;
+      min-height: 32px;
+      accent-color: var(--green);
+    }
+
+    output {
+      width: 42px;
+      color: var(--muted);
+      font-size: 12px;
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .actions {
+      display: grid;
+      grid-template-columns: 1fr 42px;
+      gap: 9px;
+    }
+
+    .run,
+    .icon-button {
+      height: 42px;
+      border: 0;
+      border-radius: 5px;
+      color: #fff;
+      background: var(--green);
+      font-weight: 750;
+      cursor: pointer;
+    }
+
+    .run:hover,
+    .icon-button:hover { background: var(--green-dark); }
+
+    .run:disabled,
+    .icon-button:disabled {
+      cursor: wait;
+      opacity: .62;
+    }
+
+    .icon-button {
+      display: grid;
+      place-items: center;
+      font-size: 18px;
+    }
+
+    main {
+      min-width: 0;
+      min-height: 0;
+      padding: 22px;
+      overflow: auto;
+    }
+
+    .main-head {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 18px;
+      margin-bottom: 18px;
+    }
+
+    .main-head p {
+      margin-bottom: 0;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.45;
+    }
+
+    .badge {
+      padding: 6px 9px;
+      border-radius: 4px;
+      color: var(--green-dark);
+      background: #e4f4ed;
+      font-size: 11px;
+      font-weight: 750;
+      white-space: nowrap;
+    }
+
+    .metrics {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      margin-bottom: 18px;
+      border: 1px solid var(--line);
+      background: var(--surface);
+    }
+
+    .metric {
+      padding: 14px 16px;
+      border-right: 1px solid var(--line);
+    }
+
+    .metric:last-child { border-right: 0; }
+
+    .metric span {
+      display: block;
+      margin-bottom: 6px;
+      color: var(--muted);
+      font-size: 11px;
+      text-transform: uppercase;
+    }
+
+    .metric strong {
+      font-size: 22px;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .panel {
+      border: 1px solid var(--line);
+      background: var(--surface);
+    }
+
+    .panel-head {
+      height: 46px;
+      padding: 0 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .panel-head span {
+      color: var(--muted);
+      font-size: 11px;
+    }
+
+    .chart-wrap {
+      min-height: 520px;
+      padding: 16px;
+      display: grid;
+      place-items: center;
+      position: relative;
+    }
+
+    #chart {
+      display: block;
+      width: 100%;
+      max-width: 980px;
+      height: auto;
+    }
+
+    #echartsChart,
+    #d3Chart {
+      display: none;
+      width: 100%;
+      height: 500px;
+    }
+
+    #d3Chart {
+      overflow: visible;
+    }
+
+    .d3-axis path,
+    .d3-axis line {
+      stroke: #cdd7d2;
+      shape-rendering: crispEdges;
+    }
+
+    .d3-axis text {
+      fill: var(--muted);
+      font-size: 11px;
+    }
+
+    .d3-grid line {
+      stroke: #e7ece9;
+      shape-rendering: crispEdges;
+    }
+
+    .placeholder {
+      position: absolute;
+      inset: 0;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+      color: var(--muted);
+      font-size: 13px;
+      text-align: center;
+    }
+
+    .error {
+      margin: 0 16px 16px;
+      padding: 12px;
+      color: #8f2525;
+      background: #fff1f1;
+      border: 1px solid #ffd7d7;
+      font-size: 12px;
+    }
+
+    .inspector {
+      min-width: 0;
+      border-left: 1px solid var(--line);
+      display: grid;
+      grid-template-rows: auto auto minmax(0, 1fr);
+    }
+
+    .inspector-head {
+      padding: 22px 18px 16px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .tabs {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      padding: 10px;
+      gap: 8px;
+      border-bottom: 1px solid var(--line);
+      background: #fbfcfb;
+    }
+
+    .tab {
+      height: 34px;
+      border: 1px solid var(--line);
+      border-radius: 5px;
+      color: var(--muted);
+      background: #fff;
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    .tab.active {
+      color: #fff;
+      border-color: var(--green);
+      background: var(--green);
+    }
+
+    .data-pane {
+      min-height: 0;
+      overflow: auto;
+    }
+
+    .summary-box {
+      padding: 16px 18px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .summary-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 10px;
+      margin-top: 12px;
+    }
+
+    .summary-item {
+      padding: 10px;
+      border: 1px solid #edf0ee;
+      background: #fbfcfb;
+    }
+
+    .summary-item span {
+      display: block;
+      margin-bottom: 5px;
+      color: var(--muted);
+      font-size: 11px;
+    }
+
+    .summary-item strong {
+      font-size: 16px;
+      font-variant-numeric: tabular-nums;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+      font-variant-numeric: tabular-nums;
+    }
+
+    th, td {
+      padding: 9px 12px;
+      border-bottom: 1px solid #edf0ee;
+      text-align: right;
+      white-space: nowrap;
+    }
+
+    th:first-child,
+    td:first-child { text-align: left; }
+
+    th {
+      position: sticky;
+      top: 0;
+      z-index: 1;
+      color: var(--muted);
+      background: #f8faf9;
+      font-weight: 700;
+    }
+  </style>
+  <script src="https://cdn.jsdelivr.net/npm/echarts@5.6.0/dist/echarts.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand"><span class="brand-mark">β</span> Research Plotter</div>
+    <div class="runtime">
+      <span id="dot" class="dot"></span>
+      <span id="status">ECharts 可视化引擎已准备就绪。</span>
+      <span class="progress" aria-hidden="true"><span id="progressBar"></span></span>
+      <span id="progressValue">0%</span>
+    </div>
+  </header>
+
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="side-head">
+        <h1>实验控制台</h1>
+        <p class="subtle">选择数据集，并调整浏览器端绘图设置。</p>
+      </div>
+      <div class="side-tabs">
+        <button id="sideTabData" class="side-tab active" type="button">数据</button>
+        <button id="sideTabSettings" class="side-tab" type="button">设置</button>
+      </div>
+      <div class="side-body">
+        <div id="sideDataPane" class="side-pane side-data active">
+          <div class="side-context">
+            <span>当前设置</span>
+            <strong id="currentSettingsBrief">ECharts · 交互 Canvas · 趋势线与置信区间 · 180 样本</strong>
+          </div>
+          <div id="datasetList" class="dataset-list"></div>
+        </div>
+        <div id="sideSettingsPane" class="side-pane side-settings">
+          <div class="side-context">
+            <span>当前数据</span>
+            <strong id="currentDatasetBrief">神经认知实验</strong>
+          </div>
+          <div class="controls">
+            <div class="control">
+              <label for="renderEngine">渲染引擎</label>
+              <select id="renderEngine">
+                <option value="echarts" selected>ECharts · 交互 Canvas</option>
+                <option value="d3">D3.js · 自定义 SVG</option>
+                <option value="matplotlib">Matplotlib · 静态 PNG</option>
+              </select>
+            </div>
+            <div class="control">
+              <label for="chartType">图表类型</label>
+              <select id="chartType">
+                <option value="line">趋势线与置信区间</option>
+                <option value="scatter">散点与回归线</option>
+                <option value="hist">分布直方图</option>
+                <option value="box">组间箱线图</option>
+              </select>
+            </div>
+            <div class="control">
+              <label for="points">样本数量</label>
+              <div class="range-row">
+                <input id="points" type="range" min="60" max="420" step="20" value="180">
+                <output id="pointsOut">180</output>
+              </div>
+            </div>
+            <div class="control">
+              <label for="noise">噪声强度</label>
+              <div class="range-row">
+                <input id="noise" type="range" min=".4" max="7" step=".2" value="2.4">
+                <output id="noiseOut">2.4</output>
+              </div>
+            </div>
+            <div class="control">
+              <label for="seed">随机种子</label>
+              <input id="seed" type="number" min="1" max="99999" value="2026">
+            </div>
+            <div class="actions">
+              <button id="run" class="run" disabled>生成图像</button>
+              <button id="download" class="icon-button" title="下载 PNG" disabled>↓</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <main>
+      <div class="main-head">
+        <div>
+          <h1 id="analysisTitle">科研数据可视化</h1>
+          <p id="summary">使用浏览器端 JavaScript 生成数据，并用 ECharts 渲染交互图表。</p>
+        </div>
+        <span class="badge">WASM · 浏览器端制图</span>
+      </div>
+
+      <section class="metrics">
+        <div class="metric"><span>样本数</span><strong id="mCount">--</strong></div>
+        <div class="metric"><span>均值</span><strong id="mMean">--</strong></div>
+        <div class="metric"><span>标准差</span><strong id="mStd">--</strong></div>
+        <div class="metric"><span>相关系数</span><strong id="mCorr">--</strong></div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head">
+          <h2 id="chartTitle">ECharts 交互图表</h2>
+          <span id="chartMeta">Canvas · tooltip / legend / zoom</span>
+        </div>
+        <div class="chart-wrap">
+          <div id="placeholder" class="placeholder">正在初始化 Python 绘图引擎...</div>
+          <img id="chart" alt="Matplotlib 生成的科研数据图">
+          <div id="echartsChart" aria-label="ECharts 交互图表"></div>
+          <svg id="d3Chart" role="img" aria-label="D3.js 自定义图表"></svg>
+        </div>
+        <div id="error"></div>
+      </section>
+    </main>
+
+    <aside class="inspector">
+      <div class="inspector-head">
+        <h1>数据查看</h1>
+        <p class="subtle">右侧展示当前虚拟数据的统计摘要与前 50 条观测值。</p>
+      </div>
+      <div class="tabs">
+        <button id="tabData" class="tab active">数据表</button>
+        <button id="tabNotes" class="tab">说明</button>
+      </div>
+      <div id="dataPane" class="data-pane">
+        <div class="summary-box">
+          <h3 id="datasetName">未选择数据集</h3>
+          <p id="datasetDesc" class="subtle">初始化完成后将自动生成默认数据。</p>
+          <div class="summary-grid">
+            <div class="summary-item"><span>最小值</span><strong id="sMin">--</strong></div>
+            <div class="summary-item"><span>最大值</span><strong id="sMax">--</strong></div>
+            <div class="summary-item"><span>斜率</span><strong id="sSlope">--</strong></div>
+            <div class="summary-item"><span>R²</span><strong id="sR2">--</strong></div>
+          </div>
+        </div>
+        <table>
+          <thead>
+            <tr><th>ID</th><th>X</th><th>Y</th><th>组别</th></tr>
+          </thead>
+          <tbody id="rows"></tbody>
+        </table>
+      </div>
+    </aside>
+  </div>
+
+  <script>
+    const datasets = [
+      {
+        id: "neuro",
+        name: "神经认知实验",
+        plotName: "Cognitive Training Study",
+        code: "COG-204",
+        field: "心理与脑科学",
+        trend: 1.35,
+        baseline: 42,
+        periodic: 4.2,
+        description: "模拟任务训练轮次与反应准确率之间的变化关系。"
+      },
+      {
+        id: "material",
+        name: "材料疲劳测试",
+        plotName: "Material Fatigue Test",
+        code: "MAT-118",
+        field: "材料科学",
+        trend: -0.82,
+        baseline: 76,
+        periodic: 2.8,
+        description: "模拟循环载荷下样品性能指标的衰减趋势。"
+      },
+      {
+        id: "bio",
+        name: "细胞生长观察",
+        plotName: "Cell Growth Observation",
+        code: "BIO-327",
+        field: "生命科学",
+        trend: 0.92,
+        baseline: 28,
+        periodic: 7.5,
+        description: "模拟培养时间与细胞活性指标之间的关系。"
+      },
+      {
+        id: "env",
+        name: "环境因子采样",
+        plotName: "Environmental Sampling",
+        code: "ENV-086",
+        field: "环境科学",
+        trend: 0.34,
+        baseline: 55,
+        periodic: 9.2,
+        description: "模拟连续采样中环境指标的季节性波动。"
+      }
+    ];
+
+    const $ = (id) => document.getElementById(id);
+    let worker = null;
+    let pythonReady = false;
+    let pendingPythonRun = false;
+    let activeDataset = datasets[0];
+    let activeEngine = "echarts";
+    let echartsInstance = null;
+    let latestImage = "";
+    let latestRows = [];
+    let latestResult = null;
+    let activeTab = "data";
+    const engineLabels = {
+      matplotlib: {
+        title: "Matplotlib 输出结果",
+        meta: "PNG · dpi 160 · 本地生成",
+        button: "生成图像",
+        busy: "Matplotlib 正在生成图像..."
+      },
+      echarts: {
+        title: "ECharts 交互图表",
+        meta: "Canvas · tooltip / legend / zoom",
+        button: "更新图表",
+        busy: "ECharts 正在等待数据..."
+      },
+      d3: {
+        title: "D3.js 自定义图表",
+        meta: "SVG · 浏览器端渲染",
+        button: "更新图表",
+        busy: "D3.js 正在等待数据..."
+      }
+    };
+
+    function renderDatasets() {
+      $("datasetList").innerHTML = datasets.map((item) => `
+        <button class="dataset ${item.id === activeDataset.id ? "active" : ""}" data-id="${item.id}">
+          <span class="dataset-title">${item.name}<span class="dataset-code">${item.code}</span></span>
+          <span class="dataset-meta">
+            <span>${item.field}</span>
+            <span>趋势 ${item.trend > 0 ? "+" : ""}${item.trend}</span>
+          </span>
+        </button>
+      `).join("");
+    }
+
+    function selectedText(id) {
+      const select = $(id);
+      return select.options[select.selectedIndex].textContent;
+    }
+
+    function updateSidebarContext() {
+      $("currentDatasetBrief").textContent = `${activeDataset.name} · ${activeDataset.code}`;
+      $("currentSettingsBrief").textContent = `${selectedText("renderEngine")} · ${selectedText("chartType")} · ${$("points").value} 样本`;
+    }
+
+    function setProgress(percent, message) {
+      $("progressBar").style.width = `${percent}%`;
+      $("progressValue").textContent = `${percent}%`;
+      if (message) $("status").textContent = message;
+    }
+
+    function setBusy(busy, message) {
+      $("run").disabled = busy;
+      $("run").textContent = busy ? "正在计算..." : engineLabels[activeEngine].button;
+      if (message) $("status").textContent = message;
+    }
+
+    function params() {
+      return {
+        dataset: activeDataset,
+        chartType: $("chartType").value,
+        points: Number($("points").value),
+        noise: Number($("noise").value),
+        seed: Number($("seed").value)
+      };
+    }
+
+    function createRng(seed) {
+      let state = seed >>> 0;
+      return () => {
+        state = (state * 1664525 + 1013904223) >>> 0;
+        return state / 4294967296;
+      };
+    }
+
+    function normalRandom(rng) {
+      const u1 = Math.max(rng(), Number.EPSILON);
+      const u2 = rng();
+      return Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
+    }
+
+    function mean(values) {
+      return values.reduce((sum, value) => sum + value, 0) / values.length;
+    }
+
+    function std(values, avg = mean(values)) {
+      return Math.sqrt(values.reduce((sum, value) => sum + (value - avg) ** 2, 0) / values.length);
+    }
+
+    function linearStats(values) {
+      const xs = values.map((row) => row.x);
+      const ys = values.map((row) => row.y);
+      const avgX = mean(xs);
+      const avgY = mean(ys);
+      const cov = values.reduce((sum, row) => sum + (row.x - avgX) * (row.y - avgY), 0);
+      const varX = xs.reduce((sum, value) => sum + (value - avgX) ** 2, 0);
+      const varY = ys.reduce((sum, value) => sum + (value - avgY) ** 2, 0);
+      const slope = varX ? cov / varX : 0;
+      const intercept = avgY - slope * avgX;
+      const ssRes = values.reduce((sum, row) => sum + (row.y - (slope * row.x + intercept)) ** 2, 0);
+      const r2 = varY ? 1 - ssRes / varY : 0;
+      const corr = varX && varY ? cov / Math.sqrt(varX * varY) : 0;
+      return { slope, r2, corr };
+    }
+
+    function generateJsResult() {
+      const p = params();
+      const d = p.dataset;
+      const rng = createRng(p.seed);
+      const n = p.points;
+      const xStep = n > 1 ? 24 / (n - 1) : 0;
+      const series = Array.from({ length: n }, (_, index) => {
+        const x = index * xStep;
+        const group = ["A", "B", "C"][index % 3];
+        const groupOffset = [-1.8, 0.4, 2.1][index % 3];
+        const seasonal = Math.sin(x * 0.72) * d.periodic + Math.cos(x * 0.19) * d.periodic * 0.42;
+        const y = d.baseline + d.trend * x + seasonal + groupOffset + normalRandom(rng) * p.noise;
+        return { i: index + 1, x, y, group };
+      });
+      const ys = series.map((row) => row.y);
+      const avg = mean(ys);
+      const fit = linearStats(series);
+      return {
+        image: "",
+        title: `${d.name}可视化分析`,
+        description: `${d.field}虚拟数据，样本 ${n}，噪声 ${p.noise.toFixed(1)}，随机种子 ${p.seed}。基础计算与交互绘图在浏览器端完成。`,
+        series,
+        stats: {
+          count: n,
+          mean: avg.toFixed(2),
+          std: std(ys, avg).toFixed(2),
+          corr: fit.corr.toFixed(3),
+          min: Math.min(...ys).toFixed(2),
+          max: Math.max(...ys).toFixed(2),
+          slope: fit.slope.toFixed(3),
+          r2: fit.r2.toFixed(3)
+        },
+        rows: series.slice(0, 50).map((row) => ({
+          i: row.i,
+          x: row.x.toFixed(2),
+          y: row.y.toFixed(2),
+          group: row.group
+        }))
+      };
+    }
+
+    function ensurePythonWorker() {
+      if (worker) return;
+      $("dot").classList.remove("ready");
+      setProgress(2, "正在按需加载 Pyodide、NumPy 与 Matplotlib...");
+      worker = new Worker("./python-worker.js");
+      worker.onmessage = ({ data }) => {
+        if (data.type === "progress") setProgress(data.percent, data.message);
+        if (data.type === "ready") {
+          pythonReady = true;
+          $("dot").classList.add("ready");
+          setProgress(100, "Pyodide 与 Matplotlib 已就绪。");
+          if (pendingPythonRun) {
+            pendingPythonRun = false;
+            runAnalysis();
+          } else {
+            setBusy(false);
+          }
+        }
+        if (data.type === "result") renderResult(data);
+        if (data.type === "error") {
+          $("error").innerHTML = `<div class="error">${data.message}</div>`;
+          $("placeholder").textContent = "生成失败，请查看错误信息。";
+          pendingPythonRun = false;
+          setBusy(false, "运行失败。");
+        }
+      };
+
+      worker.onerror = (event) => {
+        $("error").innerHTML = `<div class="error">Worker 加载失败：${event.message}</div>`;
+        pendingPythonRun = false;
+        setBusy(false, "运行环境加载失败。");
+      };
+    }
+
+    function runAnalysis() {
+      $("error").innerHTML = "";
+      $("placeholder").style.display = "grid";
+      $("placeholder").textContent = engineLabels[activeEngine].busy;
+      if (activeEngine === "matplotlib") {
+        ensurePythonWorker();
+        if (!pythonReady) {
+          pendingPythonRun = true;
+          setBusy(true, "正在按需加载 Pyodide、NumPy 与 Matplotlib...");
+          return;
+        }
+        setBusy(true, "Python 正在生成虚拟数据与图像...");
+        worker.postMessage({ type: "run", params: params() });
+        return;
+      }
+      setBusy(true, "JavaScript 正在生成虚拟数据...");
+      window.requestAnimationFrame(() => renderResult(generateJsResult()));
+    }
+
+    function chartValues(data) {
+      return data.series.map((row) => ({
+        i: row.i,
+        x: Number(row.x),
+        y: Number(row.y),
+        group: row.group
+      }));
+    }
+
+    function groupedValues(values) {
+      return ["A", "B", "C"].map((group) => ({
+        group,
+        values: values.filter((row) => row.group === group).map((row) => row.y).sort((a, b) => a - b)
+      }));
+    }
+
+    function quantile(sorted, q) {
+      if (!sorted.length) return 0;
+      const position = (sorted.length - 1) * q;
+      const base = Math.floor(position);
+      const rest = position - base;
+      return sorted[base + 1] === undefined ? sorted[base] : sorted[base] + rest * (sorted[base + 1] - sorted[base]);
+    }
+
+    function boxStats(values) {
+      return groupedValues(values).map((item) => {
+        const q1 = quantile(item.values, 0.25);
+        const median = quantile(item.values, 0.5);
+        const q3 = quantile(item.values, 0.75);
+        const iqr = q3 - q1;
+        const lowFence = q1 - 1.5 * iqr;
+        const highFence = q3 + 1.5 * iqr;
+        const low = item.values.find((value) => value >= lowFence) ?? item.values[0];
+        const high = [...item.values].reverse().find((value) => value <= highFence) ?? item.values[item.values.length - 1];
+        return { group: item.group, low, q1, median, q3, high };
+      });
+    }
+
+    function histogramBins(values) {
+      const ys = values.map((row) => row.y);
+      const min = Math.min(...ys);
+      const max = Math.max(...ys);
+      const count = Math.max(10, Math.round(Math.sqrt(ys.length)));
+      const step = (max - min || 1) / count;
+      const bins = Array.from({ length: count }, (_, index) => ({
+        start: min + index * step,
+        end: min + (index + 1) * step,
+        count: 0
+      }));
+      ys.forEach((value) => {
+        const index = Math.min(count - 1, Math.floor((value - min) / step));
+        bins[index].count += 1;
+      });
+      return bins;
+    }
+
+    function setChartShell(engine) {
+      const label = engineLabels[engine];
+      $("chartTitle").textContent = label.title;
+      $("chartMeta").textContent = label.meta;
+      $("run").textContent = label.button;
+      $("download").title = engine === "matplotlib" ? "下载 PNG" : engine === "echarts" ? "下载图表 PNG" : "下载 SVG";
+      $("chart").style.display = engine === "matplotlib" ? "block" : "none";
+      $("echartsChart").style.display = engine === "echarts" ? "block" : "none";
+      $("d3Chart").style.display = engine === "d3" ? "block" : "none";
+      if (engine !== "echarts" && echartsInstance) echartsInstance.clear();
+      if (engine !== "d3" && window.d3) d3.select("#d3Chart").selectAll("*").remove();
+    }
+
+    function renderCurrentEngine(data) {
+      setChartShell(activeEngine);
+      if (!data) return;
+      if (activeEngine === "matplotlib") renderMatplotlib(data);
+      if (activeEngine === "echarts") renderECharts(data);
+      if (activeEngine === "d3") renderD3(data);
+    }
+
+    function renderMatplotlib(data) {
+      latestImage = data.image;
+      $("chart").src = `data:image/png;base64,${data.image}`;
+    }
+
+    function renderECharts(data) {
+      if (!window.echarts) {
+        $("error").innerHTML = `<div class="error">ECharts 加载失败，请检查网络或 CDN 访问。</div>`;
+        return;
+      }
+      const values = chartValues(data);
+      const chartType = $("chartType").value;
+      echartsInstance = echartsInstance || echarts.init($("echartsChart"));
+      const base = {
+        color: ["#167d59", "#2d6cdf", "#e7842e", "#8eb8a7"],
+        animationDuration: 350,
+        grid: { left: 58, right: 24, top: 48, bottom: 58 },
+        tooltip: { trigger: "axis" },
+        dataZoom: chartType === "box" ? [] : [{ type: "inside" }, { type: "slider", height: 18, bottom: 20 }]
+      };
+      let option;
+      if (chartType === "hist") {
+        const bins = histogramBins(values);
+        option = {
+          ...base,
+          xAxis: { type: "category", name: "区间", data: bins.map((bin) => `${bin.start.toFixed(1)}-${bin.end.toFixed(1)}`) },
+          yAxis: { type: "value", name: "频数" },
+          series: [{ name: "频数", type: "bar", data: bins.map((bin) => bin.count), barMaxWidth: 28 }]
+        };
+      } else if (chartType === "box") {
+        const boxes = boxStats(values);
+        option = {
+          ...base,
+          tooltip: { trigger: "item" },
+          xAxis: { type: "category", name: "实验组", data: boxes.map((box) => box.group) },
+          yAxis: { type: "value", name: "Synthetic measurement", scale: true },
+          series: [{ name: "箱线图", type: "boxplot", data: boxes.map((box) => [box.low, box.q1, box.median, box.q3, box.high]) }]
+        };
+      } else if (chartType === "scatter") {
+        option = {
+          ...base,
+          tooltip: { trigger: "item" },
+          xAxis: { type: "value", name: "Observation index / time" },
+          yAxis: { type: "value", name: "Synthetic measurement", scale: true },
+          series: [{ name: "观测值", type: "scatter", symbolSize: 7, data: values.map((row) => [row.x, row.y]) }]
+        };
+      } else {
+        option = {
+          ...base,
+          xAxis: { type: "value", name: "Observation index / time" },
+          yAxis: { type: "value", name: "Synthetic measurement", scale: true },
+          series: [{ name: "观测值", type: "line", showSymbol: false, smooth: true, data: values.map((row) => [row.x, row.y]) }]
+        };
+      }
+      echartsInstance.setOption(option, true);
+      window.requestAnimationFrame(() => echartsInstance.resize());
+    }
+
+    function renderD3(data) {
+      if (!window.d3) {
+        $("error").innerHTML = `<div class="error">D3.js 加载失败，请检查网络或 CDN 访问。</div>`;
+        return;
+      }
+      const values = chartValues(data);
+      const chartType = $("chartType").value;
+      const svg = d3.select("#d3Chart");
+      svg.selectAll("*").remove();
+      const width = $("d3Chart").clientWidth || 900;
+      const height = 500;
+      const margin = { top: 34, right: 28, bottom: 48, left: 58 };
+      svg.attr("viewBox", `0 0 ${width} ${height}`);
+      const innerWidth = width - margin.left - margin.right;
+      const innerHeight = height - margin.top - margin.bottom;
+      const g = svg.append("g").attr("transform", `translate(${margin.left},${margin.top})`);
+      const yExtent = d3.extent(values, (row) => row.y);
+      const y = d3.scaleLinear().domain(yExtent).nice().range([innerHeight, 0]);
+      const palette = { A: "#167d59", B: "#2d6cdf", C: "#e7842e" };
+
+      if (chartType === "hist") {
+        const bins = d3.bin().thresholds(Math.max(10, Math.round(Math.sqrt(values.length)))).value((row) => row.y)(values);
+        const x = d3.scaleLinear().domain([bins[0].x0, bins[bins.length - 1].x1]).range([0, innerWidth]);
+        const yHist = d3.scaleLinear().domain([0, d3.max(bins, (bin) => bin.length)]).nice().range([innerHeight, 0]);
+        g.append("g").attr("class", "d3-grid").call(d3.axisLeft(yHist).tickSize(-innerWidth).tickFormat(""));
+        g.append("g").attr("class", "d3-axis").attr("transform", `translate(0,${innerHeight})`).call(d3.axisBottom(x).ticks(8));
+        g.append("g").attr("class", "d3-axis").call(d3.axisLeft(yHist).ticks(6));
+        g.selectAll("rect").data(bins).join("rect")
+          .attr("x", (bin) => x(bin.x0) + 1)
+          .attr("y", (bin) => yHist(bin.length))
+          .attr("width", (bin) => Math.max(0, x(bin.x1) - x(bin.x0) - 2))
+          .attr("height", (bin) => innerHeight - yHist(bin.length))
+          .attr("fill", "#2d6cdf")
+          .attr("opacity", 0.82);
+        return;
+      }
+
+      if (chartType === "box") {
+        const boxes = boxStats(values);
+        const x = d3.scaleBand().domain(boxes.map((box) => box.group)).range([0, innerWidth]).padding(0.45);
+        g.append("g").attr("class", "d3-grid").call(d3.axisLeft(y).tickSize(-innerWidth).tickFormat(""));
+        g.append("g").attr("class", "d3-axis").attr("transform", `translate(0,${innerHeight})`).call(d3.axisBottom(x));
+        g.append("g").attr("class", "d3-axis").call(d3.axisLeft(y).ticks(6));
+        const box = g.selectAll(".box").data(boxes).join("g").attr("transform", (d) => `translate(${x(d.group)},0)`);
+        box.append("line").attr("x1", x.bandwidth() / 2).attr("x2", x.bandwidth() / 2).attr("y1", (d) => y(d.low)).attr("y2", (d) => y(d.high)).attr("stroke", "#263b33");
+        box.append("rect").attr("y", (d) => y(d.q3)).attr("width", x.bandwidth()).attr("height", (d) => y(d.q1) - y(d.q3)).attr("fill", (d) => palette[d.group]).attr("opacity", 0.72);
+        box.append("line").attr("x1", 0).attr("x2", x.bandwidth()).attr("y1", (d) => y(d.median)).attr("y2", (d) => y(d.median)).attr("stroke", "#fff").attr("stroke-width", 2);
+        return;
+      }
+
+      const x = d3.scaleLinear().domain(d3.extent(values, (row) => row.x)).nice().range([0, innerWidth]);
+      g.append("g").attr("class", "d3-grid").call(d3.axisLeft(y).tickSize(-innerWidth).tickFormat(""));
+      g.append("g").attr("class", "d3-axis").attr("transform", `translate(0,${innerHeight})`).call(d3.axisBottom(x).ticks(8));
+      g.append("g").attr("class", "d3-axis").call(d3.axisLeft(y).ticks(6));
+      if (chartType === "scatter") {
+        g.selectAll("circle").data(values).join("circle")
+          .attr("cx", (row) => x(row.x))
+          .attr("cy", (row) => y(row.y))
+          .attr("r", 3.6)
+          .attr("fill", (row) => palette[row.group])
+          .attr("opacity", 0.72);
+      } else {
+        const line = d3.line().x((row) => x(row.x)).y((row) => y(row.y)).curve(d3.curveCatmullRom.alpha(0.35));
+        g.append("path").datum(values).attr("fill", "none").attr("stroke", "#167d59").attr("stroke-width", 2.2).attr("d", line);
+        g.selectAll("circle").data(values.filter((_, index) => index % Math.ceil(values.length / 55) === 0)).join("circle")
+          .attr("cx", (row) => x(row.x))
+          .attr("cy", (row) => y(row.y))
+          .attr("r", 2.4)
+          .attr("fill", "#2d6cdf")
+          .attr("opacity", 0.55);
+      }
+    }
+
+    function renderRows(rows) {
+      latestRows = rows;
+      $("rows").innerHTML = rows.map((row) => `
+        <tr>
+          <td>${row.i}</td>
+          <td>${row.x}</td>
+          <td>${row.y}</td>
+          <td>${row.group}</td>
+        </tr>
+      `).join("");
+    }
+
+    function fillDataPane(data) {
+      $("datasetName").textContent = activeDataset.name;
+      $("datasetDesc").textContent = activeDataset.description;
+      $("sMin").textContent = data.stats.min;
+      $("sMax").textContent = data.stats.max;
+      $("sSlope").textContent = data.stats.slope;
+      $("sR2").textContent = data.stats.r2;
+      renderRows(data.rows);
+    }
+
+    function renderNotes() {
+      const library = activeEngine === "matplotlib" ? "Matplotlib" : activeEngine === "echarts" ? "ECharts" : "D3.js";
+      const output = activeEngine === "matplotlib" ? "PNG" : activeEngine === "echarts" ? "Canvas" : "SVG";
+      const runtime = activeEngine === "matplotlib" ? "Pyodide" : "JavaScript";
+      $("dataPane").innerHTML = `
+        <div class="summary-box">
+          <h3>${activeDataset.name}</h3>
+          <p class="subtle">${activeDataset.description}</p>
+          <div class="summary-grid">
+            <div class="summary-item"><span>运行位置</span><strong>浏览器</strong></div>
+            <div class="summary-item"><span>绘图库</span><strong>${library}</strong></div>
+            <div class="summary-item"><span>运行时</span><strong>${runtime}</strong></div>
+            <div class="summary-item"><span>输出</span><strong>${output}</strong></div>
+          </div>
+        </div>
+      `;
+    }
+
+    function restoreDataPane() {
+      $("dataPane").innerHTML = `
+        <div class="summary-box">
+          <h3 id="datasetName"></h3>
+          <p id="datasetDesc" class="subtle"></p>
+          <div class="summary-grid">
+            <div class="summary-item"><span>最小值</span><strong id="sMin">--</strong></div>
+            <div class="summary-item"><span>最大值</span><strong id="sMax">--</strong></div>
+            <div class="summary-item"><span>斜率</span><strong id="sSlope">--</strong></div>
+            <div class="summary-item"><span>R²</span><strong id="sR2">--</strong></div>
+          </div>
+        </div>
+        <table>
+          <thead><tr><th>ID</th><th>X</th><th>Y</th><th>组别</th></tr></thead>
+          <tbody id="rows"></tbody>
+        </table>
+      `;
+    }
+
+    function renderResult(data) {
+      latestResult = data;
+      renderCurrentEngine(data);
+      $("placeholder").style.display = "none";
+      $("analysisTitle").textContent = data.title;
+      $("summary").textContent = data.description;
+      $("mCount").textContent = data.stats.count;
+      $("mMean").textContent = data.stats.mean;
+      $("mStd").textContent = data.stats.std;
+      $("mCorr").textContent = data.stats.corr;
+      if (activeTab === "data") fillDataPane(data);
+      $("download").disabled = false;
+      setBusy(false, "分析完成，数据未离开当前浏览器。");
+    }
+
+    $("datasetList").addEventListener("click", (event) => {
+      const button = event.target.closest(".dataset");
+      if (!button) return;
+      activeDataset = datasets.find((item) => item.id === button.dataset.id);
+      renderDatasets();
+      updateSidebarContext();
+      runAnalysis();
+    });
+
+    ["chartType", "seed"].forEach((id) => $(id).addEventListener("change", () => {
+      updateSidebarContext();
+      runAnalysis();
+    }));
+    ["points", "noise"].forEach((id) => {
+      const input = $(id);
+      const out = $(id + "Out");
+      input.addEventListener("input", () => {
+        out.value = id === "points" ? input.value : Number(input.value).toFixed(1);
+        updateSidebarContext();
+      });
+      input.addEventListener("change", () => {
+        updateSidebarContext();
+        runAnalysis();
+      });
+    });
+
+    $("renderEngine").addEventListener("change", (event) => {
+      if (event.target.value === activeEngine) return;
+      activeEngine = event.target.value;
+      $("error").innerHTML = "";
+      updateSidebarContext();
+      if (activeEngine === "matplotlib") {
+        runAnalysis();
+      } else {
+        pendingPythonRun = false;
+        setBusy(false, "已切换到浏览器端 JavaScript 渲染。");
+        renderCurrentEngine(latestResult);
+        $("placeholder").style.display = latestResult ? "none" : "grid";
+      }
+      if (activeTab === "notes") renderNotes();
+    });
+
+    $("sideTabData").addEventListener("click", () => {
+      $("sideTabData").classList.add("active");
+      $("sideTabSettings").classList.remove("active");
+      $("sideDataPane").classList.add("active");
+      $("sideSettingsPane").classList.remove("active");
+    });
+
+    $("sideTabSettings").addEventListener("click", () => {
+      $("sideTabSettings").classList.add("active");
+      $("sideTabData").classList.remove("active");
+      $("sideSettingsPane").classList.add("active");
+      $("sideDataPane").classList.remove("active");
+    });
+
+    $("run").addEventListener("click", runAnalysis);
+    $("download").addEventListener("click", () => {
+      if (!latestResult) return;
+      const a = document.createElement("a");
+      if (activeEngine === "echarts" && echartsInstance) {
+        a.href = echartsInstance.getDataURL({ type: "png", pixelRatio: 2, backgroundColor: "#ffffff" });
+        a.download = `${activeDataset.id}-echarts-plot.png`;
+      } else if (activeEngine === "d3") {
+        const svgText = new XMLSerializer().serializeToString($("d3Chart"));
+        a.href = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svgText)}`;
+        a.download = `${activeDataset.id}-d3-plot.svg`;
+      } else {
+        if (!latestImage) return;
+        a.href = `data:image/png;base64,${latestImage}`;
+        a.download = `${activeDataset.id}-matplotlib-plot.png`;
+      }
+      a.click();
+    });
+
+    $("tabData").addEventListener("click", () => {
+      activeTab = "data";
+      $("tabData").classList.add("active");
+      $("tabNotes").classList.remove("active");
+      restoreDataPane();
+      if (latestResult) fillDataPane(latestResult);
+    });
+
+    $("tabNotes").addEventListener("click", () => {
+      activeTab = "notes";
+      $("tabNotes").classList.add("active");
+      $("tabData").classList.remove("active");
+      renderNotes();
+    });
+
+    window.addEventListener("resize", () => {
+      if (activeEngine === "echarts" && echartsInstance) echartsInstance.resize();
+      if (activeEngine === "d3" && latestResult) renderD3(latestResult);
+    });
+
+    renderDatasets();
+    updateSidebarContext();
+    setChartShell(activeEngine);
+    $("dot").classList.add("ready");
+    setProgress(100, "ECharts 可视化引擎已准备就绪。");
+    runAnalysis();
+  </script>
+</body>
+</html>

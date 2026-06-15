@@ -14,7 +14,7 @@ const types = {
 
 const server = http.createServer((req, res) => {
   const pathname = decodeURIComponent(new URL(req.url, "http://localhost").pathname);
-  const requested = pathname === "/" ? "research-pyodide-chart.html" : pathname.slice(1);
+  const requested = pathname === "/" ? "index.html" : pathname.slice(1);
   const file = path.resolve(root, requested);
 
   if (!file.startsWith(root + path.sep)) {
@@ -45,7 +45,7 @@ function listen(port, attemptsLeft = 20) {
   });
 
   server.listen(port, "127.0.0.1", () => {
-    console.log(`Research Plotter: http://127.0.0.1:${port}/`);
+    console.log(`Data Plotter: http://127.0.0.1:${port}/`);
   });
 }
 

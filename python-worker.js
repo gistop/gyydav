@@ -114,6 +114,10 @@ result = {
     "image": base64.b64encode(buffer.getvalue()).decode("ascii"),
     "title": f"{d['name']}可视化分析",
     "description": f"{d['field']}虚拟数据，样本 {n}，噪声 {noise:.1f}，随机种子 {p['seed']}。全部计算与绘图均在浏览器端完成。",
+    "series": [
+        {"i": i + 1, "x": float(x[i]), "y": float(y[i]), "group": str(groups[i])}
+        for i in range(n)
+    ],
     "stats": {
         "count": int(n),
         "mean": f"{np.mean(y):.2f}",
