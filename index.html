@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>BrowserLab Research Plotter</title>
+  <link href="https://cdn.jsdelivr.net/npm/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
   <style>
     :root {
       color-scheme: light;
@@ -153,26 +154,33 @@
     .side-tabs {
       display: grid;
       grid-template-columns: repeat(2, 1fr);
-      padding: 10px;
-      gap: 8px;
+      padding: 0 12px;
       border-bottom: 1px solid var(--line);
-      background: #fbfcfb;
+      background: #fff;
     }
 
     .side-tab {
-      height: 34px;
-      border: 1px solid var(--line);
-      border-radius: 5px;
+      position: relative;
+      height: 44px;
+      border: 0;
       color: var(--muted);
-      background: #fff;
-      font-size: 12px;
+      background: transparent;
+      font-size: 13px;
       font-weight: 700;
       cursor: pointer;
     }
 
     .side-tab.active {
-      color: #fff;
-      border-color: var(--green);
+      color: var(--green-dark);
+    }
+
+    .side-tab.active::after {
+      content: "";
+      position: absolute;
+      right: 18px;
+      bottom: -1px;
+      left: 18px;
+      height: 3px;
       background: var(--green);
     }
 
@@ -192,6 +200,42 @@
 
     .side-data {
       grid-template-rows: auto minmax(0, 1fr);
+    }
+
+    .upload-card {
+      padding: 12px 18px;
+      border-bottom: 1px solid var(--line);
+      background: #fff;
+    }
+
+    .upload-card input {
+      display: none;
+    }
+
+    .upload-button {
+      width: 100%;
+      min-height: 36px;
+      border: 1px solid var(--green);
+      border-radius: 5px;
+      color: #fff;
+      background: var(--green);
+      font-size: 12px;
+      font-weight: 750;
+      cursor: pointer;
+    }
+
+    .upload-button:hover {
+      background: var(--green-dark);
+    }
+
+    .upload-name {
+      display: block;
+      min-height: 18px;
+      margin-top: 7px;
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 1.45;
+      word-break: break-all;
     }
 
     .side-settings {
@@ -592,7 +636,36 @@
       background: #f8faf9;
       font-weight: 700;
     }
+
+    .data-table {
+      height: 420px;
+      min-height: 260px;
+      border-top: 1px solid #edf0ee;
+      font-size: 12px;
+    }
+
+    .tabulator {
+      border: 0;
+      background: #fff;
+      font-family: inherit;
+    }
+
+    .tabulator .tabulator-header {
+      border-bottom-color: var(--line);
+      background: #f8faf9;
+    }
+
+    .tabulator .tabulator-header .tabulator-col,
+    .tabulator .tabulator-row .tabulator-cell {
+      border-right-color: #edf0ee;
+    }
+
+    .tabulator .tabulator-row {
+      border-bottom-color: #edf0ee;
+    }
   </style>
+  <script src="https://cdn.jsdelivr.net/npm/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.5.3/papaparse.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/echarts@5.6.0/dist/echarts.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js"></script>
 </head>
@@ -619,6 +692,11 @@
       </div>
       <div class="side-body">
         <div id="sideDataPane" class="side-pane side-data active">
+          <div class="upload-card">
+            <input id="csvFile" type="file" accept=".csv,text/csv">
+            <button id="chooseCsv" class="upload-button" type="button">提交 CSV 数据</button>
+            <span id="uploadName" class="upload-name">未选择文件</span>
+          </div>
           <div class="side-context">
             <span>当前设置</span>
             <strong id="currentSettingsBrief">ECharts · 交互 Canvas · 趋势线与置信区间 · 180 样本</strong>
@@ -726,12 +804,7 @@
             <div class="summary-item"><span>R²</span><strong id="sR2">--</strong></div>
           </div>
         </div>
-        <table>
-          <thead>
-            <tr><th>ID</th><th>X</th><th>Y</th><th>组别</th></tr>
-          </thead>
-          <tbody id="rows"></tbody>
-        </table>
+        <div id="dataTable" class="data-table"></div>
       </div>
     </aside>
   </div>
@@ -791,6 +864,7 @@
     let activeDataset = datasets[0];
     let activeEngine = "echarts";
     let echartsInstance = null;
+    let dataTable = null;
     let latestImage = "";
     let latestRows = [];
     let latestResult = null;
@@ -1200,16 +1274,116 @@
       }
     }
 
-    function renderRows(rows) {
+    function escapeHtml(value) {
+      return String(value ?? "").replace(/[&<>"']/g, (char) => ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': "&quot;",
+        "'": "&#39;"
+      }[char]));
+    }
+
+    function tableColumnsFromRows(rows) {
+      const first = rows[0] || {};
+      return Object.keys(first).map((field) => ({
+        title: field === "i" ? "ID" : field.toUpperCase(),
+        field,
+        editor: "input",
+        headerSort: true
+      }));
+    }
+
+    function renderFallbackTable(rows, columns) {
+      const fields = columns.map((column) => column.field);
+      $("dataTable").innerHTML = `
+        <table>
+          <thead><tr>${columns.map((column) => `<th>${escapeHtml(column.title)}</th>`).join("")}</tr></thead>
+          <tbody>
+            ${rows.slice(0, 200).map((row) => `
+              <tr>${fields.map((field) => `<td contenteditable="true">${escapeHtml(row[field])}</td>`).join("")}</tr>
+            `).join("")}
+          </tbody>
+        </table>
+      `;
+    }
+
+    function renderRows(rows, columns = tableColumnsFromRows(rows)) {
       latestRows = rows;
-      $("rows").innerHTML = rows.map((row) => `
-        <tr>
-          <td>${row.i}</td>
-          <td>${row.x}</td>
-          <td>${row.y}</td>
-          <td>${row.group}</td>
-        </tr>
-      `).join("");
+      const target = $("dataTable");
+      if (!target) return;
+
+      if (!window.Tabulator) {
+        renderFallbackTable(rows, columns);
+        $("error").innerHTML = `<div class="error">Tabulator 加载失败，已使用基础表格预览。</div>`;
+        return;
+      }
+
+      if (dataTable) {
+        dataTable.destroy();
+        dataTable = null;
+      }
+
+      dataTable = new Tabulator(target, {
+        data: rows,
+        columns,
+        height: "100%",
+        layout: "fitDataStretch",
+        pagination: "local",
+        paginationSize: 50,
+        movableColumns: true,
+        placeholder: "暂无数据",
+        cellEdited: (cell) => {
+          const row = cell.getRow().getData();
+          const index = latestRows.findIndex((item) => item === row);
+          if (index >= 0) latestRows[index] = row;
+        }
+      });
+    }
+
+    function parseCsvFile(file) {
+      if (!file) return;
+      if (!window.Papa) {
+        $("error").innerHTML = `<div class="error">CSV 解析库加载失败，请检查网络或 CDN 访问。</div>`;
+        return;
+      }
+
+      $("uploadName").textContent = `正在读取：${file.name}`;
+      setProgress(25, "正在解析 CSV 文件...");
+      Papa.parse(file, {
+        header: true,
+        skipEmptyLines: true,
+        dynamicTyping: true,
+        worker: true,
+        complete: (result) => {
+          const rows = result.data.filter((row) => Object.values(row).some((value) => value !== null && value !== ""));
+          if (!rows.length) {
+            $("uploadName").textContent = `${file.name}：未读取到有效数据`;
+            $("error").innerHTML = `<div class="error">CSV 文件为空，或没有可识别的表头。</div>`;
+            return;
+          }
+
+          activeTab = "data";
+          $("tabData").classList.add("active");
+          $("tabNotes").classList.remove("active");
+          restoreDataPane();
+          $("datasetName").textContent = file.name;
+          $("datasetDesc").textContent = `已从 CSV 读取 ${rows.length} 行、${Object.keys(rows[0]).length} 列。单元格可直接编辑。`;
+          $("sMin").textContent = "--";
+          $("sMax").textContent = "--";
+          $("sSlope").textContent = "--";
+          $("sR2").textContent = "--";
+          renderRows(rows);
+          $("uploadName").textContent = `${file.name} · ${rows.length} 行`;
+          $("error").innerHTML = "";
+          setProgress(100, "CSV 已提交到 Tabulator。");
+        },
+        error: (error) => {
+          $("uploadName").textContent = `${file.name}：读取失败`;
+          $("error").innerHTML = `<div class="error">${escapeHtml(error.message || "CSV 解析失败")}</div>`;
+          setProgress(100, "CSV 解析失败。");
+        }
+      });
     }
 
     function fillDataPane(data) {
@@ -1252,10 +1426,7 @@
             <div class="summary-item"><span>R²</span><strong id="sR2">--</strong></div>
           </div>
         </div>
-        <table>
-          <thead><tr><th>ID</th><th>X</th><th>Y</th><th>组别</th></tr></thead>
-          <tbody id="rows"></tbody>
-        </table>
+        <div id="dataTable" class="data-table"></div>
       `;
     }
 
@@ -1331,6 +1502,8 @@
     });
 
     $("run").addEventListener("click", runAnalysis);
+    $("chooseCsv").addEventListener("click", () => $("csvFile").click());
+    $("csvFile").addEventListener("change", (event) => parseCsvFile(event.target.files[0]));
     $("download").addEventListener("click", () => {
       if (!latestResult) return;
       const a = document.createElement("a");
