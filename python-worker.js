@@ -38,8 +38,14 @@ noise = float(p["noise"])
 x = np.linspace(0, 24, n)
 groups = np.array(["A", "B", "C"])[np.arange(n) % 3]
 group_offsets = np.choose(np.arange(n) % 3, [-1.8, 0.4, 2.1])
+lon = 116.18 + rng.random(n) * 0.72
+lat = 39.72 + rng.random(n) * 0.46
+hot_a = np.exp(-(((lon - 116.46) / 0.13) ** 2 + ((lat - 39.94) / 0.09) ** 2))
+hot_b = np.exp(-(((lon - 116.72) / 0.1) ** 2 + ((lat - 39.82) / 0.07) ** 2))
+spatial_signal = hot_a * 18 + hot_b * 11 - np.hypot(lon - 116.5, lat - 39.9) * 9
 seasonal = np.sin(x * 0.72) * float(d["periodic"]) + np.cos(x * 0.19) * float(d["periodic"]) * 0.42
-y = float(d["baseline"]) + float(d["trend"]) * x + seasonal + group_offsets + rng.normal(0, noise, n)
+y = float(d["baseline"]) + float(d["trend"]) * x + seasonal + group_offsets + spatial_signal * 0.28 + rng.normal(0, noise, n)
+intensity = np.maximum(0, float(d["baseline"]) + spatial_signal + seasonal * 0.45 + rng.normal(0, noise, n))
 
 plt.style.use("seaborn-v0_8-whitegrid")
 fig, ax = plt.subplots(figsize=(10.2, 5.9), dpi=160)
@@ -74,6 +80,12 @@ elif chart_type == "hist":
     ax.axvline(np.mean(y), color="#e7842e", linewidth=2.5, label=f"Mean {np.mean(y):.2f}")
     ax.axvline(np.median(y), color="#167d59", linewidth=2.1, linestyle="--", label=f"Median {np.median(y):.2f}")
     plot_title = f"{plot_name} - Distribution"
+elif chart_type == "spatial":
+    points = ax.scatter(lon, lat, c=intensity, s=np.clip(intensity * 3.5, 18, 120), cmap="turbo", alpha=0.78, edgecolors="white", linewidths=0.35)
+    fig.colorbar(points, ax=ax, label="Spatial intensity", fraction=0.036, pad=0.03)
+    ax.set_xlabel("Longitude")
+    ax.set_ylabel("Latitude")
+    plot_title = f"{plot_name} - Spatial Hotspots"
 else:
     grouped = [y[groups == g] for g in ["A", "B", "C"]]
     box = ax.boxplot(grouped, patch_artist=True, labels=["A", "B", "C"])
@@ -88,9 +100,10 @@ else:
     ax.set_xlabel("Experimental group")
     plot_title = f"{plot_name} - Group Comparison"
 
-if chart_type != "box":
+if chart_type not in ["box", "spatial"]:
     ax.set_xlabel("Observation index / time")
-ax.set_ylabel("Synthetic measurement" if chart_type != "hist" else "Frequency")
+if chart_type != "spatial":
+    ax.set_ylabel("Synthetic measurement" if chart_type != "hist" else "Frequency")
 ax.set_title(plot_title, loc="left", fontsize=15, fontweight="bold", pad=14)
 ax.text(0.99, 1.02, "Generated in browser with Pyodide + Matplotlib",
         transform=ax.transAxes, ha="right", va="bottom", fontsize=8.5, color="#697570")
@@ -115,7 +128,7 @@ result = {
     "title": f"{d['name']}可视化分析",
     "description": f"{d['field']}虚拟数据，样本 {n}，噪声 {noise:.1f}，随机种子 {p['seed']}。全部计算与绘图均在浏览器端完成。",
     "series": [
-        {"i": i + 1, "x": float(x[i]), "y": float(y[i]), "group": str(groups[i])}
+        {"i": i + 1, "x": float(x[i]), "y": float(y[i]), "lon": float(lon[i]), "lat": float(lat[i]), "intensity": float(intensity[i]), "group": str(groups[i])}
         for i in range(n)
     ],
     "stats": {
@@ -129,7 +142,7 @@ result = {
         "r2": f"{r2:.3f}"
     },
     "rows": [
-        {"i": i + 1, "x": f"{x[i]:.2f}", "y": f"{y[i]:.2f}", "group": str(groups[i])}
+        {"i": i + 1, "x": f"{x[i]:.2f}", "y": f"{y[i]:.2f}", "lon": f"{lon[i]:.5f}", "lat": f"{lat[i]:.5f}", "intensity": f"{intensity[i]:.2f}", "group": str(groups[i])}
         for i in range(min(50, n))
     ]
 }

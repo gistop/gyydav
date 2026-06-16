@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>BrowserLab Research Plotter</title>
   <link href="https://cdn.jsdelivr.net/npm/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/ol@10.5.0/ol.css" rel="stylesheet">
   <style>
     :root {
       color-scheme: light;
@@ -397,6 +398,72 @@
       font-size: 18px;
     }
 
+    .wasm-panel {
+      margin-top: 12px;
+      border: 1px solid var(--line);
+      background: #fff;
+    }
+
+    .wasm-panel h3 {
+      margin: 0;
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--line);
+      font-size: 12px;
+    }
+
+    .wasm-table {
+      width: 100%;
+      table-layout: fixed;
+      border-collapse: collapse;
+      font-size: 11px;
+    }
+
+    .wasm-table th,
+    .wasm-table td {
+      padding: 8px 7px;
+      border-bottom: 1px solid #edf0ee;
+      text-align: left;
+      white-space: normal;
+    }
+
+    .wasm-table th:nth-child(2),
+    .wasm-table td:nth-child(2) {
+      width: 48px;
+      color: var(--muted);
+    }
+
+    .wasm-table th:nth-child(3),
+    .wasm-table th:nth-child(4),
+    .wasm-table td:nth-child(3),
+    .wasm-table td:nth-child(4) {
+      width: 58px;
+      text-align: center;
+    }
+
+    .wasm-button {
+      min-height: 28px;
+      width: 100%;
+      padding: 0 6px;
+      border: 1px solid #cbd5d0;
+      border-radius: 4px;
+      color: #27342f;
+      background: #fbfcfb;
+      font-size: 11px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    .wasm-button:hover {
+      border-color: var(--green);
+      color: var(--green-dark);
+      background: #eef8f3;
+    }
+
+    .wasm-button:disabled {
+      cursor: wait;
+      opacity: .62;
+    }
+
     main {
       min-width: 0;
       min-height: 0;
@@ -492,7 +559,8 @@
     }
 
     #echartsChart,
-    #d3Chart {
+    #d3Chart,
+    #olMap {
       display: none;
       width: 100%;
       height: 500px;
@@ -516,6 +584,12 @@
     .d3-grid line {
       stroke: #e7ece9;
       shape-rendering: crispEdges;
+    }
+
+    #olMap {
+      overflow: hidden;
+      border: 1px solid var(--line);
+      background: #e9efec;
     }
 
     .placeholder {
@@ -668,6 +742,7 @@
   <script src="https://cdn.jsdelivr.net/npm/papaparse@5.5.3/papaparse.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/echarts@5.6.0/dist/echarts.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/ol@10.5.0/dist/ol.js"></script>
 </head>
 <body>
   <header class="topbar">
@@ -715,6 +790,7 @@
                 <option value="echarts" selected>ECharts · 交互 Canvas</option>
                 <option value="d3">D3.js · 自定义 SVG</option>
                 <option value="matplotlib">Matplotlib · 静态 PNG</option>
+                <option value="openlayers">OpenLayers · 空间分析</option>
               </select>
             </div>
             <div class="control">
@@ -724,6 +800,7 @@
                 <option value="scatter">散点与回归线</option>
                 <option value="hist">分布直方图</option>
                 <option value="box">组间箱线图</option>
+                <option value="spatial">空间热点分析</option>
               </select>
             </div>
             <div class="control">
@@ -747,6 +824,20 @@
             <div class="actions">
               <button id="run" class="run" disabled>生成图像</button>
               <button id="download" class="icon-button" title="下载 PNG" disabled>↓</button>
+            </div>
+            <div class="wasm-panel">
+              <h3>WASM 引擎</h3>
+              <table class="wasm-table">
+                <thead>
+                  <tr>
+                    <th>资源</th>
+                    <th>状态</th>
+                    <th>清缓存</th>
+                    <th>释放</th>
+                  </tr>
+                </thead>
+                <tbody id="wasmRuntimeList"></tbody>
+              </table>
             </div>
           </div>
         </div>
@@ -779,6 +870,7 @@
           <img id="chart" alt="Matplotlib 生成的科研数据图">
           <div id="echartsChart" aria-label="ECharts 交互图表"></div>
           <svg id="d3Chart" role="img" aria-label="D3.js 自定义图表"></svg>
+          <div id="olMap" aria-label="OpenLayers 空间分析地图"></div>
         </div>
         <div id="error"></div>
       </section>
@@ -864,11 +956,20 @@
     let activeDataset = datasets[0];
     let activeEngine = "echarts";
     let echartsInstance = null;
+    let olMap = null;
+    let olHeatLayer = null;
+    let olVectorLayer = null;
     let dataTable = null;
     let latestImage = "";
     let latestRows = [];
     let latestResult = null;
     let activeTab = "data";
+    let wasmRuntimeState = "未加载";
+    const wasmRuntimeRows = [
+      { id: "pyodide", name: "Pyodide Python/WASM" },
+      { id: "numpy", name: "NumPy WASM package" },
+      { id: "matplotlib", name: "Matplotlib WASM package" }
+    ];
     const engineLabels = {
       matplotlib: {
         title: "Matplotlib 输出结果",
@@ -887,6 +988,12 @@
         meta: "SVG · 浏览器端渲染",
         button: "更新图表",
         busy: "D3.js 正在等待数据..."
+      },
+      openlayers: {
+        title: "OpenLayers 空间地图",
+        meta: "XYZ tiles / heatmap / vector points",
+        button: "更新地图",
+        busy: "OpenLayers 正在渲染地图..."
       }
     };
 
@@ -922,6 +1029,69 @@
       $("run").disabled = busy;
       $("run").textContent = busy ? "正在计算..." : engineLabels[activeEngine].button;
       if (message) $("status").textContent = message;
+    }
+
+    function renderWasmRuntimeList() {
+      const target = $("wasmRuntimeList");
+      if (!target) return;
+      target.innerHTML = wasmRuntimeRows.map((row) => `
+        <tr>
+          <td>${escapeHtml(row.name)}</td>
+          <td>${escapeHtml(wasmRuntimeState)}</td>
+          <td><button class="wasm-button" type="button" data-wasm-action="clear" data-wasm-id="${row.id}">清空</button></td>
+          <td><button class="wasm-button" type="button" data-wasm-action="release" data-wasm-id="${row.id}">释放</button></td>
+        </tr>
+      `).join("");
+    }
+
+    function setWasmRuntimeState(state) {
+      wasmRuntimeState = state;
+      renderWasmRuntimeList();
+    }
+
+    async function clearWasmCache() {
+      const deleted = [];
+      if ("caches" in window) {
+        const keys = await caches.keys();
+        await Promise.all(keys.map(async (key) => {
+          if (/pyodide|wasm|matplotlib|numpy/i.test(key)) {
+            if (await caches.delete(key)) deleted.push(`Cache:${key}`);
+          }
+        }));
+      }
+      if (indexedDB.databases) {
+        const databases = await indexedDB.databases();
+        await Promise.all(databases.map((db) => new Promise((resolve) => {
+          const name = db.name || "";
+          if (!/pyodide|wasm|matplotlib|numpy/i.test(name)) {
+            resolve();
+            return;
+          }
+          const request = indexedDB.deleteDatabase(name);
+          request.onsuccess = () => {
+            deleted.push(`IndexedDB:${name}`);
+            resolve();
+          };
+          request.onerror = request.onblocked = () => resolve();
+        })));
+      }
+      $("status").textContent = deleted.length ? `已清理 ${deleted.length} 个 WASM 缓存项。` : "未发现可清理的 WASM 缓存项。";
+    }
+
+    function releaseWasmEngine() {
+      if (worker) worker.terminate();
+      worker = null;
+      pythonReady = false;
+      pendingPythonRun = false;
+      latestImage = "";
+      setWasmRuntimeState("已释放");
+      $("dot").classList.add("ready");
+      $("status").textContent = "WASM 绘图引擎已释放，下次使用 Matplotlib 时会重新加载。";
+      if (activeEngine === "matplotlib") {
+        $("placeholder").style.display = "grid";
+        $("placeholder").textContent = "WASM 绘图引擎已释放。";
+        setBusy(false);
+      }
     }
 
     function params() {
@@ -983,8 +1153,14 @@
         const group = ["A", "B", "C"][index % 3];
         const groupOffset = [-1.8, 0.4, 2.1][index % 3];
         const seasonal = Math.sin(x * 0.72) * d.periodic + Math.cos(x * 0.19) * d.periodic * 0.42;
-        const y = d.baseline + d.trend * x + seasonal + groupOffset + normalRandom(rng) * p.noise;
-        return { i: index + 1, x, y, group };
+        const lon = 116.18 + rng() * 0.72;
+        const lat = 39.72 + rng() * 0.46;
+        const hotA = Math.exp(-(((lon - 116.46) / 0.13) ** 2 + ((lat - 39.94) / 0.09) ** 2));
+        const hotB = Math.exp(-(((lon - 116.72) / 0.1) ** 2 + ((lat - 39.82) / 0.07) ** 2));
+        const spatialSignal = hotA * 18 + hotB * 11 - Math.hypot(lon - 116.5, lat - 39.9) * 9;
+        const y = d.baseline + d.trend * x + seasonal + groupOffset + spatialSignal * 0.28 + normalRandom(rng) * p.noise;
+        const intensity = Math.max(0, d.baseline + spatialSignal + seasonal * 0.45 + normalRandom(rng) * p.noise);
+        return { i: index + 1, x, y, lon, lat, intensity, group };
       });
       const ys = series.map((row) => row.y);
       const avg = mean(ys);
@@ -1008,20 +1184,32 @@
           i: row.i,
           x: row.x.toFixed(2),
           y: row.y.toFixed(2),
+          lon: row.lon.toFixed(5),
+          lat: row.lat.toFixed(5),
+          intensity: row.intensity.toFixed(2),
           group: row.group
         }))
       };
     }
 
+    function ensureSpatialModeForMap() {
+      if (activeEngine === "openlayers" && $("chartType").value !== "spatial") {
+        $("chartType").value = "spatial";
+        updateSidebarContext();
+      }
+    }
+
     function ensurePythonWorker() {
       if (worker) return;
       $("dot").classList.remove("ready");
+      setWasmRuntimeState("加载中");
       setProgress(2, "正在按需加载 Pyodide、NumPy 与 Matplotlib...");
       worker = new Worker("./python-worker.js");
       worker.onmessage = ({ data }) => {
         if (data.type === "progress") setProgress(data.percent, data.message);
         if (data.type === "ready") {
           pythonReady = true;
+          setWasmRuntimeState("已就绪");
           $("dot").classList.add("ready");
           setProgress(100, "Pyodide 与 Matplotlib 已就绪。");
           if (pendingPythonRun) {
@@ -1036,6 +1224,7 @@
           $("error").innerHTML = `<div class="error">${data.message}</div>`;
           $("placeholder").textContent = "生成失败，请查看错误信息。";
           pendingPythonRun = false;
+          setWasmRuntimeState("错误");
           setBusy(false, "运行失败。");
         }
       };
@@ -1043,11 +1232,13 @@
       worker.onerror = (event) => {
         $("error").innerHTML = `<div class="error">Worker 加载失败：${event.message}</div>`;
         pendingPythonRun = false;
+        setWasmRuntimeState("错误");
         setBusy(false, "运行环境加载失败。");
       };
     }
 
     function runAnalysis() {
+      ensureSpatialModeForMap();
       $("error").innerHTML = "";
       $("placeholder").style.display = "grid";
       $("placeholder").textContent = engineLabels[activeEngine].busy;
@@ -1071,6 +1262,9 @@
         i: row.i,
         x: Number(row.x),
         y: Number(row.y),
+        lon: Number(row.lon),
+        lat: Number(row.lat),
+        intensity: Number(row.intensity),
         group: row.group
       }));
     }
@@ -1127,12 +1321,14 @@
       $("chartTitle").textContent = label.title;
       $("chartMeta").textContent = label.meta;
       $("run").textContent = label.button;
-      $("download").title = engine === "matplotlib" ? "下载 PNG" : engine === "echarts" ? "下载图表 PNG" : "下载 SVG";
+      $("download").title = engine === "matplotlib" ? "下载 PNG" : engine === "echarts" ? "下载图表 PNG" : engine === "openlayers" ? "尝试下载地图 JPG" : "下载 SVG";
       $("chart").style.display = engine === "matplotlib" ? "block" : "none";
       $("echartsChart").style.display = engine === "echarts" ? "block" : "none";
       $("d3Chart").style.display = engine === "d3" ? "block" : "none";
+      $("olMap").style.display = engine === "openlayers" ? "block" : "none";
       if (engine !== "echarts" && echartsInstance) echartsInstance.clear();
       if (engine !== "d3" && window.d3) d3.select("#d3Chart").selectAll("*").remove();
+      if (engine === "openlayers" && olMap) window.requestAnimationFrame(() => olMap.updateSize());
     }
 
     function renderCurrentEngine(data) {
@@ -1141,6 +1337,153 @@
       if (activeEngine === "matplotlib") renderMatplotlib(data);
       if (activeEngine === "echarts") renderECharts(data);
       if (activeEngine === "d3") renderD3(data);
+      if (activeEngine === "openlayers") renderOpenLayers(data);
+    }
+
+    function colorRamp(value, min, max) {
+      const ratio = max === min ? 0.5 : Math.max(0, Math.min(1, (value - min) / (max - min)));
+      if (ratio < 0.34) return "#2d6cdf";
+      if (ratio < 0.67) return "#e7842e";
+      return "#b84646";
+    }
+
+    function ensureOpenLayersMap() {
+      if (!window.ol) {
+        $("error").innerHTML = `<div class="error">OpenLayers 加载失败，请检查网络或 CDN 访问。</div>`;
+        return null;
+      }
+      if (olMap) return olMap;
+
+      olMap = new ol.Map({
+        target: "olMap",
+        layers: [
+          new ol.layer.Tile({
+            source: new ol.source.XYZ({
+              url: "https://webrd0{1-4}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=7&x={x}&y={y}&z={z}",
+              crossOrigin: "anonymous"
+            })
+          })
+        ],
+        view: new ol.View({
+          center: ol.proj.fromLonLat([116.48, 39.9]),
+          zoom: 10
+        })
+      });
+      return olMap;
+    }
+
+    function renderOpenLayers(data) {
+      const map = ensureOpenLayersMap();
+      if (!map) return;
+
+      const values = chartValues(data).filter((row) => Number.isFinite(row.lon) && Number.isFinite(row.lat));
+      const intensities = values.map((row) => row.intensity);
+      const minIntensity = Math.min(...intensities);
+      const maxIntensity = Math.max(...intensities);
+      const features = values.map((row) => {
+        const feature = new ol.Feature({
+          geometry: new ol.geom.Point(ol.proj.fromLonLat([row.lon, row.lat])),
+          id: row.i,
+          intensity: row.intensity,
+          lon: row.lon,
+          lat: row.lat
+        });
+        feature.set("weight", maxIntensity === minIntensity ? 0.5 : (row.intensity - minIntensity) / (maxIntensity - minIntensity));
+        feature.set("color", colorRamp(row.intensity, minIntensity, maxIntensity));
+        return feature;
+      });
+
+      const source = new ol.source.Vector({ features });
+      if (olHeatLayer) map.removeLayer(olHeatLayer);
+      if (olVectorLayer) map.removeLayer(olVectorLayer);
+
+      olHeatLayer = new ol.layer.Heatmap({
+        source,
+        blur: 22,
+        radius: 15,
+        weight: (feature) => feature.get("weight")
+      });
+
+      olVectorLayer = new ol.layer.Vector({
+        source,
+        style: (feature) => new ol.style.Style({
+          image: new ol.style.Circle({
+            radius: 4 + feature.get("weight") * 7,
+            fill: new ol.style.Fill({ color: feature.get("color") }),
+            stroke: new ol.style.Stroke({ color: "#ffffff", width: 1 })
+          })
+        })
+      });
+
+      map.addLayer(olHeatLayer);
+      map.addLayer(olVectorLayer);
+      window.requestAnimationFrame(() => {
+        map.updateSize();
+        if (features.length) {
+          map.getView().fit(source.getExtent(), {
+            padding: [46, 46, 46, 46],
+            maxZoom: 12,
+            duration: 250
+          });
+        }
+      });
+    }
+
+    function downloadOpenLayersMap() {
+      const map = ensureOpenLayersMap();
+      if (!map) return;
+
+      const exportDpi = 300;
+      const exportScale = exportDpi / 96;
+      $("download").disabled = true;
+      $("status").textContent = `正在导出 OpenLayers 地图 JPG (${exportDpi}dpi 等效)...`;
+      map.once("rendercomplete", () => {
+        try {
+          const size = map.getSize();
+          const mapCanvas = document.createElement("canvas");
+          mapCanvas.width = Math.round(size[0] * exportScale);
+          mapCanvas.height = Math.round(size[1] * exportScale);
+          const mapContext = mapCanvas.getContext("2d");
+          mapContext.fillStyle = "#ffffff";
+          mapContext.fillRect(0, 0, mapCanvas.width, mapCanvas.height);
+
+          $("olMap").querySelectorAll(".ol-layer canvas, canvas.ol-layer").forEach((canvas) => {
+            if (!canvas.width) return;
+            const opacity = canvas.parentNode?.style?.opacity || canvas.style.opacity;
+            mapContext.globalAlpha = opacity === "" ? 1 : Number(opacity);
+            const transform = canvas.style.transform;
+            if (transform && transform.startsWith("matrix(")) {
+              const matrix = transform.match(/^matrix\(([^)]+)\)$/)[1].split(",").map(Number);
+              mapContext.setTransform(
+                matrix[0] * exportScale,
+                matrix[1] * exportScale,
+                matrix[2] * exportScale,
+                matrix[3] * exportScale,
+                matrix[4] * exportScale,
+                matrix[5] * exportScale
+              );
+            } else {
+              mapContext.setTransform(exportScale, 0, 0, exportScale, 0, 0);
+            }
+            mapContext.drawImage(canvas, 0, 0);
+          });
+
+          mapContext.setTransform(1, 0, 0, 1, 0, 0);
+          mapContext.globalAlpha = 1;
+          const a = document.createElement("a");
+          a.href = mapCanvas.toDataURL("image/jpeg", 0.92);
+          a.download = `${activeDataset.id}-openlayers-map-300dpi.jpg`;
+          a.click();
+          $("error").innerHTML = "";
+          $("status").textContent = `地图 JPG 已导出，像素尺寸 ${mapCanvas.width} x ${mapCanvas.height}。`;
+        } catch (error) {
+          $("error").innerHTML = `<div class="error">地图导出失败：底图瓦片可能存在跨域限制，无法生成包含底图的 JPG。${escapeHtml(error.message || "")}</div>`;
+          $("status").textContent = "地图导出失败。";
+        } finally {
+          $("download").disabled = false;
+        }
+      });
+      map.renderSync();
     }
 
     function renderMatplotlib(data) {
@@ -1161,10 +1504,38 @@
         animationDuration: 350,
         grid: { left: 58, right: 24, top: 48, bottom: 58 },
         tooltip: { trigger: "axis" },
-        dataZoom: chartType === "box" ? [] : [{ type: "inside" }, { type: "slider", height: 18, bottom: 20 }]
+        dataZoom: ["box", "spatial"].includes(chartType) ? [] : [{ type: "inside" }, { type: "slider", height: 18, bottom: 20 }]
       };
       let option;
-      if (chartType === "hist") {
+      if (chartType === "spatial") {
+        option = {
+          ...base,
+          tooltip: {
+            trigger: "item",
+            formatter: (params) => {
+              const row = params.data;
+              return `采样点 ${row[3]}<br>经度 ${row[0].toFixed(5)}<br>纬度 ${row[1].toFixed(5)}<br>强度 ${row[2].toFixed(2)}`;
+            }
+          },
+          visualMap: {
+            min: Math.min(...values.map((row) => row.intensity)),
+            max: Math.max(...values.map((row) => row.intensity)),
+            dimension: 2,
+            right: 12,
+            top: 42,
+            calculable: true,
+            inRange: { color: ["#2d6cdf", "#8eb8a7", "#e7842e", "#b84646"] }
+          },
+          xAxis: { type: "value", name: "Longitude", scale: true },
+          yAxis: { type: "value", name: "Latitude", scale: true },
+          series: [{
+            name: "空间强度",
+            type: "scatter",
+            symbolSize: (row) => Math.max(6, Math.min(24, row[2] / 3)),
+            data: values.map((row) => [row.lon, row.lat, row.intensity, row.i])
+          }]
+        };
+      } else if (chartType === "hist") {
         const bins = histogramBins(values);
         option = {
           ...base,
@@ -1220,6 +1591,26 @@
       const yExtent = d3.extent(values, (row) => row.y);
       const y = d3.scaleLinear().domain(yExtent).nice().range([innerHeight, 0]);
       const palette = { A: "#167d59", B: "#2d6cdf", C: "#e7842e" };
+
+      if (chartType === "spatial") {
+        const x = d3.scaleLinear().domain(d3.extent(values, (row) => row.lon)).nice().range([0, innerWidth]);
+        const yGeo = d3.scaleLinear().domain(d3.extent(values, (row) => row.lat)).nice().range([innerHeight, 0]);
+        const intensityExtent = d3.extent(values, (row) => row.intensity);
+        const size = d3.scaleSqrt().domain(intensityExtent).range([3, 13]);
+        const color = d3.scaleSequential(d3.interpolateTurbo).domain(intensityExtent);
+        g.append("g").attr("class", "d3-grid").call(d3.axisLeft(yGeo).tickSize(-innerWidth).tickFormat(""));
+        g.append("g").attr("class", "d3-axis").attr("transform", `translate(0,${innerHeight})`).call(d3.axisBottom(x).ticks(8));
+        g.append("g").attr("class", "d3-axis").call(d3.axisLeft(yGeo).ticks(6));
+        g.selectAll("circle").data(values).join("circle")
+          .attr("cx", (row) => x(row.lon))
+          .attr("cy", (row) => yGeo(row.lat))
+          .attr("r", (row) => size(row.intensity))
+          .attr("fill", (row) => color(row.intensity))
+          .attr("stroke", "#ffffff")
+          .attr("stroke-width", 0.8)
+          .attr("opacity", 0.78);
+        return;
+      }
 
       if (chartType === "hist") {
         const bins = d3.bin().thresholds(Math.max(10, Math.round(Math.sqrt(values.length)))).value((row) => row.y)(values);
@@ -1397,8 +1788,8 @@
     }
 
     function renderNotes() {
-      const library = activeEngine === "matplotlib" ? "Matplotlib" : activeEngine === "echarts" ? "ECharts" : "D3.js";
-      const output = activeEngine === "matplotlib" ? "PNG" : activeEngine === "echarts" ? "Canvas" : "SVG";
+      const library = activeEngine === "matplotlib" ? "Matplotlib" : activeEngine === "echarts" ? "ECharts" : activeEngine === "openlayers" ? "OpenLayers" : "D3.js";
+      const output = activeEngine === "matplotlib" ? "PNG" : activeEngine === "echarts" ? "Canvas" : activeEngine === "openlayers" ? "Interactive map" : "SVG";
       const runtime = activeEngine === "matplotlib" ? "Pyodide" : "JavaScript";
       $("dataPane").innerHTML = `
         <div class="summary-box">
@@ -1475,6 +1866,7 @@
       if (event.target.value === activeEngine) return;
       activeEngine = event.target.value;
       $("error").innerHTML = "";
+      ensureSpatialModeForMap();
       updateSidebarContext();
       if (activeEngine === "matplotlib") {
         runAnalysis();
@@ -1504,12 +1896,28 @@
     $("run").addEventListener("click", runAnalysis);
     $("chooseCsv").addEventListener("click", () => $("csvFile").click());
     $("csvFile").addEventListener("change", (event) => parseCsvFile(event.target.files[0]));
+    $("wasmRuntimeList").addEventListener("click", async (event) => {
+      const button = event.target.closest("[data-wasm-action]");
+      if (!button) return;
+      button.disabled = true;
+      try {
+        if (button.dataset.wasmAction === "clear") await clearWasmCache();
+        if (button.dataset.wasmAction === "release") releaseWasmEngine();
+      } catch (error) {
+        $("error").innerHTML = `<div class="error">${escapeHtml(error.message || "WASM 操作失败")}</div>`;
+      } finally {
+        button.disabled = false;
+      }
+    });
     $("download").addEventListener("click", () => {
       if (!latestResult) return;
       const a = document.createElement("a");
       if (activeEngine === "echarts" && echartsInstance) {
         a.href = echartsInstance.getDataURL({ type: "png", pixelRatio: 2, backgroundColor: "#ffffff" });
         a.download = `${activeDataset.id}-echarts-plot.png`;
+      } else if (activeEngine === "openlayers") {
+        downloadOpenLayersMap();
+        return;
       } else if (activeEngine === "d3") {
         const svgText = new XMLSerializer().serializeToString($("d3Chart"));
         a.href = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svgText)}`;
@@ -1540,9 +1948,11 @@
     window.addEventListener("resize", () => {
       if (activeEngine === "echarts" && echartsInstance) echartsInstance.resize();
       if (activeEngine === "d3" && latestResult) renderD3(latestResult);
+      if (activeEngine === "openlayers" && olMap) olMap.updateSize();
     });
 
     renderDatasets();
+    renderWasmRuntimeList();
     updateSidebarContext();
     setChartShell(activeEngine);
     $("dot").classList.add("ready");
