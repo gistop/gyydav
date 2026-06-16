@@ -806,6 +806,207 @@
     .tabulator .tabulator-row {
       border-bottom-color: #edf0ee;
     }
+
+    .mobile-nav {
+      display: none;
+    }
+
+    @media (max-width: 760px) {
+      body {
+        min-width: 0;
+        overflow: hidden;
+      }
+
+      .topbar {
+        height: 52px;
+        padding: 0 12px;
+        gap: 10px;
+      }
+
+      .brand {
+        min-width: 0;
+        font-size: 13px;
+      }
+
+      .brand-mark {
+        width: 24px;
+        height: 24px;
+        border-radius: 5px;
+        font-size: 14px;
+      }
+
+      .runtime {
+        min-width: 0;
+        flex: 1;
+        justify-content: flex-end;
+        font-size: 11px;
+      }
+
+      .runtime .progress,
+      #progressValue {
+        display: none;
+      }
+
+      #status {
+        max-width: 44vw;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .layout {
+        height: calc(100vh - 52px - 58px);
+        display: block;
+        overflow: hidden;
+      }
+
+      .sidebar,
+      main,
+      .inspector {
+        height: 100%;
+        min-height: 0;
+        display: none;
+        border: 0;
+      }
+
+      body[data-mobile-view="data"] .sidebar,
+      body[data-mobile-view="settings"] .sidebar {
+        display: grid;
+        grid-template-rows: auto minmax(0, 1fr);
+      }
+
+      body[data-mobile-view="chart"] main,
+      body[data-mobile-view="detail"] .inspector {
+        display: grid;
+      }
+
+      body[data-mobile-view="chart"] main {
+        grid-template-rows: auto minmax(0, 1fr);
+        overflow: auto;
+      }
+
+      body[data-mobile-view="detail"] .inspector {
+        grid-template-rows: auto auto minmax(0, 1fr);
+      }
+
+      .side-tabs {
+        display: none;
+      }
+
+      .side-head,
+      .inspector-head {
+        padding: 14px 14px 10px;
+      }
+
+      .side-body,
+      .data-pane {
+        min-height: 0;
+        overflow: hidden;
+      }
+
+      .side-pane.active {
+        height: 100%;
+      }
+
+      .dataset-list,
+      .side-settings,
+      .data-pane {
+        overflow: auto;
+      }
+
+      .main-head {
+        padding: 14px;
+      }
+
+      .main-head .badge,
+      .metrics {
+        display: none;
+      }
+
+      .panel {
+        height: 100%;
+        border: 0;
+        display: grid;
+        grid-template-rows: auto minmax(0, 1fr) auto;
+      }
+
+      .panel-head {
+        height: 42px;
+        padding: 0 14px;
+        gap: 12px;
+      }
+
+      .chart-wrap {
+        min-height: 0;
+        padding: 10px 12px 16px;
+        align-content: start;
+        justify-items: stretch;
+        overflow: hidden;
+      }
+
+      #echartsChart,
+      #d3Chart,
+      #olMap {
+        width: 100%;
+        max-width: 100%;
+        height: auto;
+        min-height: 0;
+        aspect-ratio: 980 / 500;
+      }
+
+      #chart {
+        width: 100%;
+        max-width: 100%;
+      }
+
+      .panel-head h2 {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .panel-head span {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .data-table {
+        height: 420px;
+      }
+
+      .mobile-nav {
+        position: fixed;
+        right: 0;
+        bottom: 0;
+        left: 0;
+        z-index: 20;
+        height: 58px;
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        border-top: 1px solid var(--line);
+        background: #fff;
+      }
+
+      .mobile-nav button {
+        border: 0;
+        border-right: 1px solid #edf0ee;
+        color: var(--muted);
+        background: #fff;
+        font-size: 12px;
+        font-weight: 800;
+      }
+
+      .mobile-nav button:last-child {
+        border-right: 0;
+      }
+
+      .mobile-nav button.active {
+        color: #fff;
+        background: var(--green);
+      }
+    }
   </style>
   <script src="https://cdn.jsdelivr.net/npm/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/papaparse@5.5.3/papaparse.min.js"></script>
@@ -973,6 +1174,13 @@
     </aside>
   </div>
 
+  <nav class="mobile-nav" aria-label="手机端视图切换">
+    <button class="active" type="button" data-mobile-view="data">数据</button>
+    <button type="button" data-mobile-view="detail">详情</button>
+    <button type="button" data-mobile-view="settings">设置</button>
+    <button type="button" data-mobile-view="chart">图表</button>
+  </nav>
+
   <script>
     const datasets = [
       {
@@ -1036,6 +1244,7 @@
     let latestRows = [];
     let latestResult = null;
     let activeTab = "data";
+    let mobileView = "data";
     let resourceSearch = "";
     const localFileResources = [];
     const expandedResourceNodes = new Set(["cloud", "local", "local-files", "local-databases", "duckdb-wasm", "workspace", "workspace-examples"]);
@@ -1220,6 +1429,36 @@
       $("datasetList").innerHTML = nodes.length
         ? renderResourceNodes(nodes)
         : `<div class="resource-empty">没有匹配的数据资源。</div>`;
+    }
+
+    function isMobileLayout() {
+      return window.matchMedia("(max-width: 760px)").matches;
+    }
+
+    function setSidebarPane(mode) {
+      const showSettings = mode === "settings";
+      $("sideTabData").classList.toggle("active", !showSettings);
+      $("sideTabSettings").classList.toggle("active", showSettings);
+      $("sideDataPane").classList.toggle("active", !showSettings);
+      $("sideSettingsPane").classList.toggle("active", showSettings);
+    }
+
+    function setMobileView(view) {
+      mobileView = view;
+      document.body.dataset.mobileView = view;
+      document.querySelectorAll(".mobile-nav [data-mobile-view]").forEach((button) => {
+        button.classList.toggle("active", button.dataset.mobileView === view);
+      });
+      if (view === "data" || view === "settings") setSidebarPane(view);
+      window.requestAnimationFrame(() => {
+        if (activeEngine === "echarts" && echartsInstance) echartsInstance.resize();
+        if (activeEngine === "d3" && latestResult) renderD3(latestResult);
+        if (activeEngine === "openlayers" && olMap) olMap.updateSize();
+      });
+      window.setTimeout(() => {
+        if (activeEngine === "echarts" && echartsInstance) echartsInstance.resize();
+        if (activeEngine === "openlayers" && olMap) olMap.updateSize();
+      }, 180);
     }
 
     function selectedText(id) {
@@ -1711,13 +1950,18 @@
       }
       const values = chartValues(data);
       const chartType = $("chartType").value;
+      const mobileChart = isMobileLayout();
       echartsInstance = echartsInstance || echarts.init($("echartsChart"));
       const base = {
         color: ["#167d59", "#2d6cdf", "#e7842e", "#8eb8a7"],
         animationDuration: 350,
-        grid: { left: 58, right: 24, top: 48, bottom: 58 },
+        grid: mobileChart
+          ? { left: 34, right: 10, top: 12, bottom: 38 }
+          : { left: 58, right: 24, top: 48, bottom: 58 },
         tooltip: { trigger: "axis" },
-        dataZoom: ["box", "spatial"].includes(chartType) ? [] : [{ type: "inside" }, { type: "slider", height: 18, bottom: 20 }]
+        dataZoom: ["box", "spatial"].includes(chartType)
+          ? []
+          : [{ type: "inside" }, { type: "slider", height: mobileChart ? 12 : 18, bottom: mobileChart ? 6 : 20 }]
       };
       let option;
       if (chartType === "spatial") {
@@ -1739,8 +1983,8 @@
             calculable: true,
             inRange: { color: ["#2d6cdf", "#8eb8a7", "#e7842e", "#b84646"] }
           },
-          xAxis: { type: "value", name: "Longitude", scale: true },
-          yAxis: { type: "value", name: "Latitude", scale: true },
+          xAxis: { type: "value", name: mobileChart ? "" : "Longitude", scale: true },
+          yAxis: { type: "value", name: mobileChart ? "" : "Latitude", scale: true },
           series: [{
             name: "空间强度",
             type: "scatter",
@@ -1769,17 +2013,24 @@
         option = {
           ...base,
           tooltip: { trigger: "item" },
-          xAxis: { type: "value", name: "Observation index / time" },
-          yAxis: { type: "value", name: "Synthetic measurement", scale: true },
+          xAxis: { type: "value", name: mobileChart ? "" : "Observation index / time" },
+          yAxis: { type: "value", name: mobileChart ? "" : "Synthetic measurement", scale: true },
           series: [{ name: "观测值", type: "scatter", symbolSize: 7, data: values.map((row) => [row.x, row.y]) }]
         };
       } else {
         option = {
           ...base,
-          xAxis: { type: "value", name: "Observation index / time" },
-          yAxis: { type: "value", name: "Synthetic measurement", scale: true },
+          xAxis: { type: "value", name: mobileChart ? "" : "Observation index / time" },
+          yAxis: { type: "value", name: mobileChart ? "" : "Synthetic measurement", scale: true },
           series: [{ name: "观测值", type: "line", showSymbol: false, smooth: true, data: values.map((row) => [row.x, row.y]) }]
         };
+      }
+      if (mobileChart) {
+        [option.xAxis, option.yAxis].forEach((axis) => {
+          if (!axis) return;
+          axis.name = "";
+          axis.axisLabel = { ...(axis.axisLabel || {}), hideOverlap: true, fontSize: 11 };
+        });
       }
       echartsInstance.setOption(option, true);
       window.requestAnimationFrame(() => echartsInstance.resize());
@@ -2065,6 +2316,7 @@
         renderDatasets();
         updateSidebarContext();
         runAnalysis();
+        if (isMobileLayout()) setMobileView("chart");
         return;
       }
 
@@ -2118,17 +2370,17 @@
     });
 
     $("sideTabData").addEventListener("click", () => {
-      $("sideTabData").classList.add("active");
-      $("sideTabSettings").classList.remove("active");
-      $("sideDataPane").classList.add("active");
-      $("sideSettingsPane").classList.remove("active");
+      setSidebarPane("data");
+      if (isMobileLayout()) setMobileView("data");
     });
 
     $("sideTabSettings").addEventListener("click", () => {
-      $("sideTabSettings").classList.add("active");
-      $("sideTabData").classList.remove("active");
-      $("sideSettingsPane").classList.add("active");
-      $("sideDataPane").classList.remove("active");
+      setSidebarPane("settings");
+      if (isMobileLayout()) setMobileView("settings");
+    });
+
+    document.querySelectorAll(".mobile-nav [data-mobile-view]").forEach((button) => {
+      button.addEventListener("click", () => setMobileView(button.dataset.mobileView));
     });
 
     $("run").addEventListener("click", runAnalysis);
@@ -2189,6 +2441,7 @@
       if (activeEngine === "openlayers" && olMap) olMap.updateSize();
     });
 
+    setMobileView("data");
     renderDatasets();
     renderWasmRuntimeList();
     updateSidebarContext();
