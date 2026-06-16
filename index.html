@@ -954,6 +954,11 @@
         aspect-ratio: 980 / 500;
       }
 
+      #olMap {
+        height: clamp(260px, 42vh, 500px);
+        aspect-ratio: auto;
+      }
+
       #chart {
         width: 100%;
         max-width: 100%;
@@ -1000,6 +1005,203 @@
 
       .mobile-nav button:last-child {
         border-right: 0;
+      }
+
+      .mobile-nav button.active {
+        color: #fff;
+        background: var(--green);
+      }
+    }
+
+    @media (orientation: landscape) and (max-height: 560px) and (hover: none) and (pointer: coarse) {
+      body {
+        min-width: 0;
+        overflow: hidden;
+      }
+
+      .topbar {
+        height: 52px;
+        padding: 0 12px;
+        gap: 10px;
+      }
+
+      .brand {
+        min-width: 0;
+        font-size: 13px;
+      }
+
+      .brand-mark {
+        width: 24px;
+        height: 24px;
+        border-radius: 5px;
+        font-size: 14px;
+      }
+
+      .runtime {
+        min-width: 0;
+        flex: 1;
+        justify-content: flex-end;
+        font-size: 11px;
+      }
+
+      .runtime .progress,
+      #progressValue {
+        display: none;
+      }
+
+      #status {
+        max-width: 46vw;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .layout {
+        width: calc(100vw - 68px);
+        height: calc(100dvh - 52px);
+        margin-left: 68px;
+        display: block;
+        overflow: hidden;
+      }
+
+      .sidebar,
+      main,
+      .inspector {
+        height: 100%;
+        min-height: 0;
+        display: none;
+        border: 0;
+      }
+
+      body[data-mobile-view="data"] .sidebar,
+      body[data-mobile-view="settings"] .sidebar {
+        display: grid;
+        grid-template-rows: auto minmax(0, 1fr);
+      }
+
+      body[data-mobile-view="chart"] main,
+      body[data-mobile-view="detail"] .inspector {
+        display: grid;
+      }
+
+      body[data-mobile-view="chart"] main {
+        grid-template-rows: auto minmax(0, 1fr);
+        overflow: auto;
+      }
+
+      body[data-mobile-view="detail"] .inspector {
+        grid-template-rows: auto auto minmax(0, 1fr);
+      }
+
+      .side-tabs {
+        display: none;
+      }
+
+      .side-head,
+      .inspector-head,
+      .main-head {
+        padding: 10px 14px 8px;
+      }
+
+      .main-head .badge,
+      .metrics {
+        display: none;
+      }
+
+      .side-body,
+      .data-pane {
+        min-height: 0;
+        overflow: hidden;
+      }
+
+      .side-pane.active {
+        height: 100%;
+      }
+
+      .dataset-list,
+      .side-settings,
+      .data-pane {
+        overflow: auto;
+      }
+
+      .panel {
+        height: 100%;
+        border: 0;
+        display: grid;
+        grid-template-rows: auto minmax(0, 1fr) auto;
+      }
+
+      .panel-head {
+        height: 38px;
+        padding: 0 14px;
+        gap: 12px;
+      }
+
+      .chart-wrap {
+        min-height: 0;
+        padding: 8px 12px 12px;
+        align-content: start;
+        justify-items: stretch;
+        overflow: hidden;
+      }
+
+      #echartsChart,
+      #d3Chart {
+        width: 100%;
+        max-width: 100%;
+        height: min(340px, calc(100dvh - 170px));
+        min-height: 220px;
+      }
+
+      #olMap {
+        width: 100%;
+        max-width: 100%;
+        height: min(340px, calc(100dvh - 170px));
+        min-height: 220px;
+      }
+
+      #chart {
+        width: 100%;
+        max-width: 100%;
+      }
+
+      .panel-head h2,
+      .panel-head span {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .mobile-nav {
+        position: fixed;
+        top: 52px;
+        bottom: 0;
+        left: 0;
+        right: auto;
+        z-index: 20;
+        width: 68px;
+        height: auto;
+        display: grid;
+        grid-template-rows: repeat(4, 1fr);
+        grid-template-columns: 1fr;
+        border-top: 0;
+        border-right: 1px solid var(--line);
+        background: #fff;
+      }
+
+      .mobile-nav button {
+        min-width: 0;
+        padding: 0 6px;
+        border: 0;
+        border-bottom: 1px solid #edf0ee;
+        color: var(--muted);
+        background: #fff;
+        font-size: 12px;
+        font-weight: 800;
+      }
+
+      .mobile-nav button:last-child {
+        border-bottom: 0;
       }
 
       .mobile-nav button.active {
@@ -1274,7 +1476,7 @@
         busy: "D3.js 正在等待数据..."
       },
       openlayers: {
-        title: "OpenLayers 空间地图",
+        title: "OpenLayers 地图",
         meta: "XYZ tiles / heatmap / vector points",
         button: "更新地图",
         busy: "OpenLayers 正在渲染地图..."
@@ -1432,7 +1634,22 @@
     }
 
     function isMobileLayout() {
-      return window.matchMedia("(max-width: 760px)").matches;
+      return window.matchMedia("(max-width: 760px), (orientation: landscape) and (max-height: 560px) and (hover: none) and (pointer: coarse)").matches;
+    }
+
+    function refreshOpenLayersSize(afterResize) {
+      if (!olMap) return;
+      let didRunCallback = false;
+      const resize = () => {
+        if (!olMap || $("olMap").offsetParent === null) return;
+        olMap.updateSize();
+        if (afterResize && !didRunCallback) {
+          didRunCallback = true;
+          afterResize();
+        }
+      };
+      window.requestAnimationFrame(resize);
+      [80, 220, 420].forEach((delay) => window.setTimeout(resize, delay));
     }
 
     function setSidebarPane(mode) {
@@ -1453,11 +1670,11 @@
       window.requestAnimationFrame(() => {
         if (activeEngine === "echarts" && echartsInstance) echartsInstance.resize();
         if (activeEngine === "d3" && latestResult) renderD3(latestResult);
-        if (activeEngine === "openlayers" && olMap) olMap.updateSize();
+        if (activeEngine === "openlayers") refreshOpenLayersSize();
       });
       window.setTimeout(() => {
         if (activeEngine === "echarts" && echartsInstance) echartsInstance.resize();
-        if (activeEngine === "openlayers" && olMap) olMap.updateSize();
+        if (activeEngine === "openlayers") refreshOpenLayersSize();
       }, 180);
     }
 
@@ -1780,7 +1997,7 @@
       $("olMap").style.display = engine === "openlayers" ? "block" : "none";
       if (engine !== "echarts" && echartsInstance) echartsInstance.clear();
       if (engine !== "d3" && window.d3) d3.select("#d3Chart").selectAll("*").remove();
-      if (engine === "openlayers" && olMap) window.requestAnimationFrame(() => olMap.updateSize());
+      if (engine === "openlayers") refreshOpenLayersSize();
     }
 
     function renderCurrentEngine(data) {
@@ -1869,8 +2086,7 @@
 
       map.addLayer(olHeatLayer);
       map.addLayer(olVectorLayer);
-      window.requestAnimationFrame(() => {
-        map.updateSize();
+      refreshOpenLayersSize(() => {
         if (features.length) {
           map.getView().fit(source.getExtent(), {
             padding: [46, 46, 46, 46],
@@ -2438,7 +2654,7 @@
     window.addEventListener("resize", () => {
       if (activeEngine === "echarts" && echartsInstance) echartsInstance.resize();
       if (activeEngine === "d3" && latestResult) renderD3(latestResult);
-      if (activeEngine === "openlayers" && olMap) olMap.updateSize();
+      if (activeEngine === "openlayers") refreshOpenLayersSize();
     });
 
     setMobileView("data");
