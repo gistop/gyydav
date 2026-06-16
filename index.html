@@ -200,7 +200,7 @@
     }
 
     .side-data {
-      grid-template-rows: auto minmax(0, 1fr);
+      grid-template-rows: auto auto auto minmax(0, 1fr);
     }
 
     .upload-card {
@@ -266,59 +266,128 @@
       line-height: 1.4;
     }
 
+    .resource-search {
+      padding: 12px;
+      border-bottom: 1px solid var(--line);
+      background: #fff;
+    }
+
+    .resource-search input {
+      width: 100%;
+      height: 34px;
+      padding: 0 10px;
+      border: 1px solid var(--line);
+      border-radius: 5px;
+      color: var(--ink);
+      background: #fbfcfb;
+      font-size: 12px;
+      outline: 0;
+    }
+
+    .resource-search input:focus {
+      border-color: rgba(22, 125, 89, .65);
+      box-shadow: 0 0 0 3px rgba(22, 125, 89, .1);
+    }
+
     .dataset-list {
       min-height: 0;
       overflow: auto;
-      padding: 12px;
+      padding: 10px 8px 14px;
     }
 
-    .dataset {
+    .resource-tree,
+    .resource-children {
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    .resource-children {
+      padding-left: 14px;
+    }
+
+    .resource-node {
+      margin: 1px 0;
+    }
+
+    .resource-row {
       width: 100%;
-      min-height: 82px;
-      margin-bottom: 10px;
-      padding: 12px;
-      border: 1px solid var(--line);
-      border-radius: 6px;
+      min-height: 32px;
+      padding: 0 8px;
+      border: 1px solid transparent;
+      border-radius: 5px;
+      display: grid;
+      grid-template-columns: 18px 18px minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 6px;
       text-align: left;
       color: var(--ink);
-      background: #fbfcfb;
+      background: transparent;
       cursor: pointer;
     }
 
-    .dataset:hover {
+    .resource-row:hover {
       border-color: #b9c9c1;
       background: #f8fbf9;
     }
 
-    .dataset.active {
+    .resource-row.active {
       border-color: rgba(22, 125, 89, .55);
       background: #eaf6f0;
-      box-shadow: inset 3px 0 0 var(--green);
+      box-shadow: inset 2px 0 0 var(--green);
     }
 
-    .dataset-title {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 8px;
-      margin-bottom: 7px;
-      font-size: 13px;
+    .resource-toggle {
+      width: 18px;
+      height: 18px;
+      display: grid;
+      place-items: center;
+      color: var(--muted);
+      font-size: 11px;
+    }
+
+    .resource-toggle.empty {
+      color: transparent;
+    }
+
+    .resource-icon {
+      width: 18px;
+      height: 18px;
+      display: grid;
+      place-items: center;
+      border-radius: 4px;
+      color: var(--green-dark);
+      background: #eaf6f0;
+      font-size: 11px;
+      font-weight: 800;
+    }
+
+    .resource-icon.cloud { color: #1c5fb8; background: #eef5ff; }
+    .resource-icon.folder { color: #33443d; background: #edf2ef; }
+    .resource-icon.file { color: #8a541d; background: #fff4e8; }
+    .resource-icon.database { color: #6a46a8; background: #f4efff; }
+    .resource-icon.workspace { color: #167d59; background: #eaf6f0; }
+
+    .resource-label {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-size: 12px;
       font-weight: 750;
     }
 
-    .dataset-code {
+    .resource-meta {
       color: var(--muted);
       font-size: 11px;
       font-variant-numeric: tabular-nums;
     }
 
-    .dataset-meta {
-      display: grid;
-      grid-template-columns: repeat(2, 1fr);
-      gap: 6px;
+    .resource-empty {
+      padding: 16px 10px;
       color: var(--muted);
       font-size: 11px;
-      font-variant-numeric: tabular-nums;
+      line-height: 1.5;
     }
 
     .controls {
@@ -776,6 +845,9 @@
             <span>当前设置</span>
             <strong id="currentSettingsBrief">ECharts · 交互 Canvas · 趋势线与置信区间 · 180 样本</strong>
           </div>
+          <div class="resource-search">
+            <input id="resourceSearch" type="search" placeholder="搜索云端、本地、工作区">
+          </div>
           <div id="datasetList" class="dataset-list"></div>
         </div>
         <div id="sideSettingsPane" class="side-pane side-settings">
@@ -964,6 +1036,9 @@
     let latestRows = [];
     let latestResult = null;
     let activeTab = "data";
+    let resourceSearch = "";
+    const localFileResources = [];
+    const expandedResourceNodes = new Set(["cloud", "local", "local-files", "local-databases", "duckdb-wasm", "workspace", "workspace-examples"]);
     let wasmRuntimeState = "未加载";
     const wasmRuntimeRows = [
       { id: "pyodide", name: "Pyodide Python/WASM" },
@@ -1007,6 +1082,144 @@
           </span>
         </button>
       `).join("");
+    }
+
+    function makeResourceTree() {
+      return [
+        {
+          id: "cloud",
+          label: "云端",
+          kind: "cloud",
+          meta: "3",
+          children: [
+            { id: "cloud-oss", label: "OSS", kind: "cloud", meta: "未连接" },
+            { id: "cloud-remote-files", label: "远程文件", kind: "cloud", meta: "未连接" },
+            { id: "cloud-api", label: "API", kind: "cloud", meta: "未连接" }
+          ]
+        },
+        {
+          id: "local",
+          label: "本地",
+          kind: "folder",
+          meta: "2",
+          children: [
+            {
+              id: "local-files",
+              label: "文件",
+              kind: "file",
+              meta: String(3 + localFileResources.length),
+              children: [
+                { id: "local-csv", label: "CSV", kind: "file", meta: "可导入" },
+                { id: "local-parquet", label: "Parquet", kind: "file", meta: "待接入" },
+                { id: "local-excel", label: "Excel", kind: "file", meta: "待接入" },
+                ...localFileResources.map((file) => ({
+                  id: file.id,
+                  label: file.name,
+                  kind: "file",
+                  meta: file.meta,
+                  keywords: `${file.name} ${file.meta}`
+                }))
+              ]
+            },
+            {
+              id: "local-databases",
+              label: "数据库",
+              kind: "database",
+              meta: "1",
+              children: [
+                {
+                  id: "duckdb-wasm",
+                  label: "DuckDB-wasm",
+                  kind: "database",
+                  meta: "浏览器",
+                  children: [
+                    { id: "duckdb-tables", label: "表", kind: "database", meta: "0" },
+                    { id: "duckdb-views", label: "视图", kind: "database", meta: "0" },
+                    { id: "duckdb-results", label: "查询结果", kind: "database", meta: "0" }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          id: "workspace",
+          label: "工作区",
+          kind: "workspace",
+          meta: String(datasets.length),
+          children: [
+            {
+              id: "workspace-examples",
+              label: "示例数据",
+              kind: "workspace",
+              meta: String(datasets.length),
+              children: datasets.map((item) => ({
+                id: `dataset-${item.id}`,
+                label: item.name,
+                kind: "workspace",
+                meta: item.code,
+                datasetId: item.id,
+                keywords: `${item.name} ${item.code} ${item.field}`
+              }))
+            },
+            { id: "workspace-current", label: "当前数据集", kind: "workspace", meta: activeDataset.code },
+            { id: "workspace-temp", label: "临时结果", kind: "workspace", meta: latestRows.length ? String(latestRows.length) : "0" },
+            { id: "workspace-chart", label: "图表数据", kind: "workspace", meta: latestResult ? "已生成" : "未生成" }
+          ]
+        }
+      ];
+    }
+
+    function resourceIcon(kind) {
+      if (kind === "cloud") return "C";
+      if (kind === "folder") return "L";
+      if (kind === "file") return "F";
+      if (kind === "database") return "D";
+      if (kind === "workspace") return "W";
+      return "";
+    }
+
+    function filterResourceNodes(nodes, query) {
+      if (!query) return nodes;
+      return nodes.reduce((items, node) => {
+        const children = filterResourceNodes(node.children || [], query);
+        const haystack = `${node.label} ${node.meta || ""} ${node.keywords || ""}`.toLowerCase();
+        if (haystack.includes(query) || children.length) {
+          items.push({ ...node, children });
+        }
+        return items;
+      }, []);
+    }
+
+    function renderResourceNodes(nodes) {
+      return `<ul class="resource-tree">${nodes.map((node) => {
+        const children = node.children || [];
+        const hasChildren = children.length > 0;
+        const expanded = resourceSearch || expandedResourceNodes.has(node.id);
+        const rowClasses = [
+          "resource-row",
+          node.datasetId === activeDataset.id ? "active" : ""
+        ].filter(Boolean).join(" ");
+        return `
+          <li class="resource-node">
+            <button class="${rowClasses}" type="button" data-node-id="${escapeHtml(node.id)}" ${node.datasetId ? `data-dataset-id="${escapeHtml(node.datasetId)}"` : ""}>
+              <span class="resource-toggle ${hasChildren ? "" : "empty"}">${hasChildren ? (expanded ? "v" : ">") : "."}</span>
+              <span class="resource-icon ${escapeHtml(node.kind)}">${resourceIcon(node.kind)}</span>
+              <span class="resource-label">${escapeHtml(node.label)}</span>
+              <span class="resource-meta">${escapeHtml(node.meta || "")}</span>
+            </button>
+            ${hasChildren && expanded ? `<div class="resource-children">${renderResourceNodes(children)}</div>` : ""}
+          </li>
+        `;
+      }).join("")}</ul>`;
+    }
+
+    function renderDatasets() {
+      const query = resourceSearch.trim().toLowerCase();
+      const nodes = filterResourceNodes(makeResourceTree(), query);
+      $("datasetList").innerHTML = nodes.length
+        ? renderResourceNodes(nodes)
+        : `<div class="resource-empty">没有匹配的数据资源。</div>`;
     }
 
     function selectedText(id) {
@@ -1765,6 +1978,12 @@
           $("sSlope").textContent = "--";
           $("sR2").textContent = "--";
           renderRows(rows);
+          localFileResources.unshift({
+            id: `local-file-${Date.now()}`,
+            name: file.name,
+            meta: `${rows.length} 行`
+          });
+          renderDatasets();
           $("uploadName").textContent = `${file.name} · ${rows.length} 行`;
           $("error").innerHTML = "";
           setProgress(100, "CSV 已提交到 Tabulator。");
@@ -1833,16 +2052,35 @@
       $("mCorr").textContent = data.stats.corr;
       if (activeTab === "data") fillDataPane(data);
       $("download").disabled = false;
+      renderDatasets();
       setBusy(false, "分析完成，数据未离开当前浏览器。");
     }
 
     $("datasetList").addEventListener("click", (event) => {
-      const button = event.target.closest(".dataset");
+      const button = event.target.closest(".resource-row");
       if (!button) return;
-      activeDataset = datasets.find((item) => item.id === button.dataset.id);
+
+      if (button.dataset.datasetId) {
+        activeDataset = datasets.find((item) => item.id === button.dataset.datasetId) || activeDataset;
+        renderDatasets();
+        updateSidebarContext();
+        runAnalysis();
+        return;
+      }
+
+      const nodeId = button.dataset.nodeId;
+      if (!nodeId || resourceSearch) return;
+      if (expandedResourceNodes.has(nodeId)) {
+        expandedResourceNodes.delete(nodeId);
+      } else {
+        expandedResourceNodes.add(nodeId);
+      }
       renderDatasets();
-      updateSidebarContext();
-      runAnalysis();
+    });
+
+    $("resourceSearch").addEventListener("input", (event) => {
+      resourceSearch = event.target.value;
+      renderDatasets();
     });
 
     ["chartType", "seed"].forEach((id) => $(id).addEventListener("change", () => {

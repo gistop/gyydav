@@ -44,8 +44,9 @@ function listen(port, attemptsLeft = 20) {
     process.exit(1);
   });
 
-  server.listen(port, "127.0.0.1", () => {
-    console.log(`Data Plotter: http://127.0.0.1:${port}/`);
+  server.listen(port, "0.0.0.0", () => {
+    console.log(`Data Plotter local: http://127.0.0.1:${port}/`);
+    console.log(`Data Plotter LAN:   http://<your-computer-ip>:${port}/`);
   });
 }
 
